@@ -1,0 +1,22 @@
+{
+  "@N1": {
+    "name": "Number 1",
+    "system_prompt_file": "scripts/ryker_prompt.txt",
+    "library_files": [],
+    "codebase_level": "full"
+  },
+  "@Scotty": {
+    "name": "Scotty - Master Architect",
+    "system_prompt_file": "scripts/scotty_prompt.txt",
+    "library_files": [],
+    "codebase_level": "full"
+  },
+  "@Uhura": {
+    "name": "Uhura the Overwatch",
+    "system_prompt_file": "scripts/uhura_sentry_prompt_v2.txt",
+    "library_files": [
+      "backend-forge.log"
+    ],
+    "codebase_level": "core"
+  }
+}
