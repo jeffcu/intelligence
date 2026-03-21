@@ -1,0 +1,13 @@
+{
+  "briefing_id": "mock-tracer-1",
+  "timestamp": "2023-10-27T10:00:00Z",
+  "articles": [
+    {
+      "id": "1",
+      "title": "Mock Market Update",
+      "link": "http://example.com/news/1",
+      "published": "2023-10-27T09:00:00Z",
+      "source": "Yahoo Finance"
+    }
+  ]
+}

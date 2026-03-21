@@ -8,7 +8,11 @@
   "@Scotty": {
     "name": "Scotty - Master Architect",
     "system_prompt_file": "scripts/scotty_prompt.txt",
-    "library_files": [],
+    "library_files": [
+      "projects/intelligence/library/News_Build_Plan.md",
+      "projects/intelligence/library/News_System_Requirements.md",
+      "projects/intelligence/library/News_Test_Plan.md"
+    ],
     "codebase_level": "full"
   },
   "@Uhura": {
