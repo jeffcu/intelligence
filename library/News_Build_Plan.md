@@ -12,10 +12,11 @@
 ## Phase 2: Advanced Semantic Analytics & Vector NoSQL (The Lab) [IN PROGRESS]
 *   **Goal:** Transition core intelligence collection to a NoSQL vector database (ChromaDB) to perform advanced semantic clustering, rapid visualizations, and eliminate duplicate token spend.
 *   **Steps:**
-    1. **Vector Containment Field:** Integrate ChromaDB into `projects/intelligence/ingestor.py` as the primary NoSQL datastore for document embeddings.
-    2. **Redundant Chopping:** Implement semantic proximity checks. If a newly ingested article matches an existing vector clustering by >90%, silently drop or merge it before calling the LLM.
-    3. **Source Scaling:** Add 3-5 new RSS/JSON sources to the ingestor to stress-test the NoSQL deduplication.
-    4. **API Telemetry Vault:** Migrate tagging and counters to dynamically log into the SQLite metadata store while the heavy text/vectors live in ChromaDB.
+    1. **Vector Containment Field:** Integrate ChromaDB into `projects/intelligence/ingestor.py` using a local embedding model (e.g., `all-MiniLM-L6-v2`) to prevent API costs during deduplication.
+    2. **Redundant Chopping:** Implement semantic proximity checks. If a newly ingested article matches an existing vector clustering by >85%, silently drop or merge it before calling the LLM.
+    3. **Prompt Evolution (Temporal Sorting):** Update the Gemini 2.5 Flash prompt to separate "Facts of the Now" from "Opinions of the Future".
+    4. **Source Scaling:** Add the designated 10 RSS/JSON sources and lay scaffolding for email newsletter ingestion.
+    5. **API Telemetry Vault:** Migrate tagging, counters, and token-cost tracking to dynamically log into the SQLite metadata store.
 
 ## Phase 3: Source Serenity & Analytics
 *   **Goal:** Expose trends over time and identify which sources provide the highest signal-to-noise ratio.
