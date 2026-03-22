@@ -5,22 +5,22 @@
 *   **Steps:**
     1. Scaffold `projects/intelligence/` directory structure. [DONE]
     2. Define static mock schemas in `projects/intelligence/tests/mock_data/`. [DONE]
-    3. Spin up local SQLite instance for relational tracer bullet. [DONE]
+    3. Spin up local DuckDB/SQLite instance. [DONE]
     4. Build lightweight Python Ingestor daemon. [DONE]
-    5. Build FastAPI `/api/briefing/latest` endpoint and Tuning Console UI. [DONE]
+    5. Build FastAPI `/api/briefing/latest` endpoint. [DONE]
 
-## Phase 2: Advanced Semantic Analytics & Vector NoSQL (The Lab) [IN PROGRESS]
-*   **Goal:** Transition core intelligence collection to a NoSQL vector database (ChromaDB) to perform advanced semantic clustering, rapid visualizations, and eliminate duplicate token spend.
+## Phase 2: The Tuning Sandbox & Telemetry (The Lab)
+*   **Goal:** Build an experimental workbench to tune data and track AI costs/performance.
 *   **Steps:**
-    1. **Vector Containment Field:** Integrate ChromaDB into `projects/intelligence/ingestor.py` as the primary NoSQL datastore for document embeddings.
-    2. **Redundant Chopping:** Implement semantic proximity checks. If a newly ingested article matches an existing vector clustering by >90%, silently drop or merge it before calling the LLM.
-    3. **Source Scaling:** Add 3-5 new RSS/JSON sources to the ingestor to stress-test the NoSQL deduplication.
-    4. **API Telemetry Vault:** Migrate tagging and counters to dynamically log into the SQLite metadata store while the heavy text/vectors live in ChromaDB.
+    1. **Scaffold the Tuning Console:** Build `projects/intelligence/tuning-console` in React to act as an experimental UI.
+    2. **API Telemetry Vault:** Implement a `telemetry` table in the local DB to log every Gemini call, token count, and cost estimate.
+    3. **Implement Redundant Chopping:** Group overlapping news stories by semantic similarity. Merge multiple articles into single, clear summaries to save on LLM processing.
+    4. **Tagging & Counters:** Tune the LLM prompt to dynamically generate category tags, entity counters, and theme classifications.
 
 ## Phase 3: Source Serenity & Analytics
 *   **Goal:** Expose trends over time and identify which sources provide the highest signal-to-noise ratio.
 *   **Steps:**
-    1. Write aggregation logic based on tagging frequency and noise scores.
+    1. Write aggregation logic in the DB based on tagging frequency and noise scores.
     2. Create `/api/trends/{ticker}` FastAPI endpoint to output time-series JSON.
     3. Add Source Reliability views to the Tuning Console to easily toggle off noisy feeds.
 

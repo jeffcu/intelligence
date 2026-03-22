@@ -3,6 +3,8 @@ import sqlite3
 import json
 import os
 import logging
+import requests
+from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
@@ -23,7 +25,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # Scotty's Override: Atomize old schema to prevent column mismatch
+    # Scotty's Override: Recycling the containment field to upgrade schema with 'link'
     cursor.execute("DROP TABLE IF EXISTS articles")
     
     cursor.execute('''
@@ -35,6 +37,7 @@ def init_db():
             hype_score INTEGER,
             impact_score INTEGER,
             source TEXT,
+            link TEXT,
             published_at TEXT
         )
     ''')
@@ -45,7 +48,7 @@ def de_hype_article(client, title, summary):
     prompt = f"""
     Analyze this news article.
     Title: {title}
-    Summary: {summary}
+    Content: {summary}
     
     Provide a JSON response strictly matching this schema:
     {{
@@ -71,6 +74,21 @@ def de_hype_article(client, title, summary):
             "impact_score": 0
         }
 
+def fetch_article_text(url):
+    """Tractor beam to pull the raw article text if RSS fails us."""
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        response = requests.get(url, headers=headers, timeout=5)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        paragraphs = soup.find_all('p')
+        text = ' '.join([p.get_text() for p in paragraphs if len(p.get_text()) > 20])
+        if text:
+            return text[:2000] + "..." # Truncate to save AI tokens
+        return "No readable content extracted."
+    except Exception as e:
+        logging.warning(f"Scraper array failed for {url}: {e}")
+        return "Failed to fetch article content."
+
 def main():
     if not API_KEY:
         logging.error("CRITICAL: GEMINI_API_KEY not found in .env. Halting ignition sequence.")
@@ -88,17 +106,26 @@ def main():
     feed = feedparser.parse(feed_url)
 
     for entry in feed.entries[:10]:  # Tracer Bullet limit
-        title = entry.title
-        summary = getattr(entry, 'summary', 'No summary provided.')
-        published_at = getattr(entry, 'published', datetime.now().isoformat())
+        title = entry.get('title', 'Unknown Title')
+        link = entry.get('link', '')
+        published_at = entry.get('published', datetime.now().isoformat())
+        
+        # Attempt to get summary from feed, otherwise scrape the hull!
+        summary = entry.get('summary', entry.get('description', ''))
+        if len(summary) < 50 and link:
+            logging.info(f"Summary too weak. Engaging tractor beam to pull article: {link}")
+            summary = fetch_article_text(link)
+            
+        if not summary or len(summary) < 10:
+            summary = "No summary provided and scraping failed."
 
         logging.info(f"🧠 Engaging De-Hype Engine for: {title[:40]}...")
         analysis = de_hype_article(client, title, summary)
 
         try:
             cursor.execute('''
-                INSERT INTO articles (title, summary, dehyped_summary, hype_score, impact_score, source, published_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO articles (title, summary, dehyped_summary, hype_score, impact_score, source, link, published_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 title,
                 summary,
@@ -106,6 +133,7 @@ def main():
                 analysis.get('hype_score', 0),
                 analysis.get('impact_score', 0),
                 'Yahoo Finance',
+                link,
                 published_at
             ))
             conn.commit()

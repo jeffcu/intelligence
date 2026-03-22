@@ -1,10 +1,107 @@
 #root {
-  max-width: 1280px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
-  text-align: center;
+  text-align: left;
 }
 
-.card {
-  padding: 2em;
+.header-panel {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(600px, 1fr));
+  gap: 1.5rem;
+}
+
+.intel-card {
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.intel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #333;
+  padding-bottom: 0.5rem;
+}
+
+.meta-tags {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.source-tag {
+  font-size: 0.75rem;
+  background: #3a3a3a;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #00d2ff;
+}
+
+.date-tag {
+  font-size: 0.75rem;
+  color: #aaa;
+}
+
+.intel-header h3 a:hover {
+  text-decoration: underline !important;
+  color: #00d2ff !important;
+}
+
+.scores {
+  display: flex;
+  gap: 1rem;
+}
+
+.score-badge {
+  font-size: 0.85rem;
+  font-weight: bold;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+}
+
+.hype {
+  background: rgba(255, 69, 58, 0.2);
+  color: #ff453a;
+}
+
+.impact {
+  background: rgba(48, 209, 88, 0.2);
+  color: #30d158;
+}
+
+.intel-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.col h4 {
+  margin-top: 0;
+  color: #888;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+
+.col p {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #ddd;
+}
+
+.processed-text {
+  color: #fff !important;
+  border-left: 2px solid #00d2ff;
+  padding-left: 10px;
 }

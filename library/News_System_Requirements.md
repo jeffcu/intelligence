@@ -1,41 +1,29 @@
 # System Requirements: Personal News Intelligence Module (Decoupled Microservice)
 
 ## 1. Purpose
-This module is an independent, heavily-decoupled intelligence layer designed to gather, normalize, analyze, condense, and present relevant news for the user. It is separated from the core 'Trust' financial engine to prevent code bloat, ensure high performance of the desktop app, and allow asynchronous, heavy LLM processing without freezing the primary user interface.
+This module is an independent, heavily-decoupled intelligence layer designed to gather, normalize, and distill global news into a peaceful, simple, and highly readable format. It serves as an experimental sandbox for tuning data extraction (tags/counters) and gracefully integrating with the core 'Trust' engine.
 
 ## 2. Core Objective
-Given a portfolio of tickers (pulled via API from Trust) and global-interest topics, the module will ingest source material on a scheduled basis, convert it into a common internal format, deduplicate overlapping coverage, strip sensationalism, and generate a concise, highly objective daily briefing.
+To provide peace and clarity. Given a portfolio of tickers and global feeds, the module will ingest source material, rigorously deduplicate overlapping coverage (redundant chopping), extract dynamic tags and counters, and generate a concise, objective daily briefing free of sensationalism.
 
 ## 3. Functional Scope
-*   **Inputs:** Portfolio watchlist of tickers, curated global news feeds (RSS/APIs), email newsletter sources, and user preferences.
-*   **Processing:** Deduplication, semantic matching, sentiment analysis, and 'De-Hype' objective normalization.
+*   **Inputs:** Portfolio watchlist of tickers, scalable global news feeds (RSS/APIs/Newsletters).
+*   **Processing:** Semantic deduplication (Chopping), dynamic tagging, entity counting, and 'De-Hype' objective normalization.
 *   **Outputs:** Structured JSON summary object exposed via a dedicated REST API endpoint.
-*   **Telemetry:** Time-series plotting of asset news trends and a running 'Source Credibility Index' (SCI).
+*   **Telemetry:** Time-series plotting of tag frequencies and source noise-levels.
 
 ## 4. Architectural Design Principles (The Scotty Doctrine)
-*   **Total Decoupling:** The Intelligence Engine runs as a standalone backend process (e.g., on port 8001 or a remote cloud server).
-*   **Asynchronous Processing:** Heavy tasks (LLM summarization, web scraping) operate entirely in the background.
-*   **Dumb Client, Smart Server:** The Trust UI (React) does zero processing. It simply fetches the pre-compiled briefing JSON and renders it.
-*   **Traceability & Accountability:** Raw source material remains available to explain *why* an item was included and to score the source's sensationalism.
-*   **Zero-Cost Infrastructure:** Absolutely no commercial database licenses or enterprise fees. 100% open-source, embedded architecture.
+*   **Total Decoupling:** The Intelligence Engine runs as a standalone backend process.
+*   **Asynchronous Processing:** Heavy tasks operate entirely in the background to ensure peace and stability on the main thread.
+*   **Dumb Client, Smart Server:** The Trust UI (React) simply fetches the pre-compiled, pristine JSON and renders it beautifully.
+*   **Traceability & Tuning:** The Tuning Console acts as an experimental sandbox to dial in LLM prompts, test new tags, and monitor source quality.
+*   **Zero-Cost Infrastructure:** 100% open-source, embedded architecture (SQLite/DuckDB, ChromaDB).
 
 ## 5. High-Level Architecture
-1.  **Independent Ingestion Daemon:** Python-based scheduled workers pulling RSS/API data.
-2.  **Processing Pipeline:** Normalization -> Ticker Matching -> Deduplication -> Sensationalism Scoring -> LLM 'De-Hype' Summarization.
-3.  **Local Datastore (Analytical):** Embedded DuckDB (MIT License). Runs in-process with zero network overhead. Optimized specifically for fast OLAP column aggregations required by the SCI and trend telemetry.
-4.  **Briefing API:** A lightweight FastAPI layer exposing:
-    *   `GET /api/briefing/latest` (The daily digest)
-    *   `GET /api/trends/{ticker}` (Time-series sentiment/volume data)
-    *   `GET /api/sources/reliability` (The Source Credibility Index rankings)
-5.  **Trust UI / Tuning Console Integration:** React components to consume APIs, plot trendlines, and visualize source reliability warnings.
-
-## 6. Phased Rollout Plan
-*   **Phase 1 (Decoupled MVP):** Scaffold independent project (`projects/intelligence`). Basic RSS ingestion, embedded DuckDB setup, deterministic ticker matching, and the FastAPI base. 
-*   **Phase 2 (The Tuning Console & De-Hype Layer):** Build `projects/intelligence/tuning-console` to visually tune LLM prompts. Introduce AI summarization to aggressively strip emotional language and calculate the Sensationalism Delta.
-*   **Phase 3 (Portfolio Sync & Telemetry):** Intelligence Engine dynamically polls Trust API. Trust UI integrates Nivo charts to plot `/api/trends` and SCI warnings.
-*   **Phase 4 (Advanced Ingestion):** Gmail/IMAP integration for newsletters, SEC filings.
-
-## 7. Recommended Stack
-*   **Backend:** Python 3.11+, FastAPI (Port 8001), APScheduler/Celery for background jobs.
-*   **Storage:** DuckDB (Primary - MIT License) or LanceDB (Fallback for vector embeddings - Apache 2.0). Both are free, embedded, and require no standalone server.
-*   **Frontend (Tuning Console & Trust):** React 18, utilizing existing Nivo charts for trend plotting.
+1.  **Scalable Ingestion Daemon:** Plug-and-play Python workers pulling varying data sources.
+2.  **Processing Pipeline:** Deduplication (Chopping) -> Tag/Counter Extraction -> LLM Summarization.
+3.  **Local Datastore:** 
+    *   Relational Data: SQLite (Articles, Telemetry).
+    *   Vector Data: ChromaDB (Embeddings for semantic deduplication).
+4.  **Briefing API:** FastAPI layer exposing `/api/briefing/latest` and `/api/trends/{tag}`.
+5.  **Tuning Console:** React sandbox to experiment with prompt tuning and view redundant chopping efficiency.
