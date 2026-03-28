@@ -79,6 +79,9 @@ function App() {
                 <div className="meta-tags">
                   <span className="source-tag">{article.source}</span>
                   <span className="date-tag">{new Date(article.published_at).toLocaleString()}</span>
+                  {article.entities && article.entities.map((entity, idx) => (
+                    <span key={idx} className="source-tag" style={{ background: '#2c2c54', color: '#70a1ff' }}>{entity}</span>
+                  ))}
                 </div>
                 <h3 style={{ margin: '0.5rem 0' }}>
                   <a href={article.link} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>
@@ -104,14 +107,14 @@ function App() {
                 <div className="temporal-tags">
                   <h4>Current Facts</h4>
                   <ul className="temporal-list">
-                    {article.current_facts.length > 0 ? article.current_facts.map((fact, i) => (
+                    {article.current_facts && article.current_facts.length > 0 ? article.current_facts.map((fact, i) => (
                       <li key={i} className="fact-item">{fact}</li>
                     )) : <li>No facts extracted.</li>}
                   </ul>
 
                   <h4 style={{ marginTop: '1rem' }}>Future Opinions & Predictions</h4>
                   <ul className="temporal-list">
-                    {article.future_opinions.length > 0 ? article.future_opinions.map((opinion, i) => (
+                    {article.future_opinions && article.future_opinions.length > 0 ? article.future_opinions.map((opinion, i) => (
                       <li key={i} className="opinion-item">{opinion}</li>
                     )) : <li>No predictions found.</li>}
                   </ul>

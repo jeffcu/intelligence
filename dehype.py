@@ -17,13 +17,19 @@ except Exception as e:
 
 SYSTEM_PROMPT = """
 You are an AI intelligence analyst for a private financial command center.
-Your objective is 'De-Hype' normalization.
+Your objective is 'De-Hype' normalization and entity extraction.
 Analyze the provided news article (Title and Content).
 1. Strip all sensationalism, emotional language, and bias.
 2. Extract the core factual intelligence.
-3. Calculate a 'hype_score' (0-100) based on the original emotional exaggeration.
-4. Calculate an 'impact_score' (0-100) based on actual material consequence.
-5. Output ONLY a raw JSON object with exactly these keys: "hype_score" (int), "impact_score" (int), and "dehyped_summary" (string).
+3. Identify key financial entities (e.g., Apple, Google, S&P 500, specific tickers or macro concepts).
+4. Use the ISQ (Investment Signal Quality) framework to calculate an 'impact_score' (0-100):
+   - Confidence (0.0 to 1.0): Information reliability.
+   - Intensity (1 to 5): Magnitude of impact.
+   - Expectation Gap (0.0 to 1.0): 0.0 = Priced in, 1.0 = Massive shock.
+   - Timeliness (0.0 to 1.0): Reaction window.
+   Formula: Impact = ((Confidence * 0.35) + ((Intensity/5) * 0.30) + (Expectation_Gap * 0.20) + (Timeliness * 0.15)) * 100
+5. Calculate a 'hype_score' (0-100): The delta between the original emotional sentiment and the factual Confidence.
+6. Output ONLY a raw JSON object with exactly these keys: "hype_score" (int), "impact_score" (int), "entities" (array of strings), and "dehyped_summary" (string).
 """
 
 async def normalize_article(title: str, content: str) -> dict:
@@ -33,7 +39,7 @@ async def normalize_article(title: str, content: str) -> dict:
     """
     if not client:
         logger.warning("Gemini Client offline. Returning raw fallback telemetry.")
-        return {"hype_score": 0, "impact_score": 0, "dehyped_summary": f"{title} - {content}"}
+        return {"hype_score": 0, "impact_score": 0, "entities": [], "dehyped_summary": f"{title} - {content}"}
 
     combined_text = f"Title: {title}\n\nContent: {content}"
 
@@ -52,6 +58,7 @@ async def normalize_article(title: str, content: str) -> dict:
         return {
             "hype_score": int(result.get("hype_score", 0)),
             "impact_score": int(result.get("impact_score", 0)),
+            "entities": result.get("entities", []),
             "dehyped_summary": str(result.get("dehyped_summary", ""))
         }
     except Exception as e:
@@ -60,5 +67,6 @@ async def normalize_article(title: str, content: str) -> dict:
         return {
             "hype_score": 0, 
             "impact_score": 0, 
+            "entities": [],
             "dehyped_summary": content
         }

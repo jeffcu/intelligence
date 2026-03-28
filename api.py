@@ -96,6 +96,14 @@ def get_latest_briefing(limit: int = 50):
                 # Decode the temporal JSON strings into arrays for the frontend
                 d['current_facts'] = json.loads(d['current_facts']) if d.get('current_facts') else []
                 d['future_opinions'] = json.loads(d['future_opinions']) if d.get('future_opinions') else []
+                d['entities'] = json.loads(d['entities']) if d.get('entities') else []
+                
+                # Defensive unpack for new schema columns, fallback to empty lists/unknown if missing
+                try:
+                    d['macro_themes'] = json.loads(d.get('macro_themes', '[]')) if d.get('macro_themes') else []
+                except Exception:
+                    d['macro_themes'] = []
+                    
                 briefings.append(d)
                 
             return {"briefings": briefings}

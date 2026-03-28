@@ -4,13 +4,13 @@
 This module is an independent, heavily-decoupled intelligence layer designed to gather, normalize, and distill global news into a peaceful, simple, and highly readable format. It serves as an experimental sandbox for tuning data extraction (tags/counters) and gracefully integrating with the core 'Trust' engine.
 
 ## 2. Core Objective
-To provide peace and clarity. Given a portfolio of 25+ tickers, macro financial trends, 10+ global feeds, and 10+ email newsletters, the module will ingest source material, rigorously deduplicate overlapping coverage (redundant chopping), extract dynamic tags, and generate a concise, objective daily briefing.
+To provide peace and clarity. Given a portfolio of 25+ tickers, macro financial trends, material economic events, global feeds, and email newsletters, the module will ingest source material, rigorously deduplicate overlapping coverage (redundant chopping), extract dynamic tags, and generate a concise, objective daily briefing.
 
 ## 3. Functional Scope
-*   **Inputs:** Portfolio watchlist (Top 25), Macro headlines, 10+ RSS/API sources, 10+ Email Newsletter parsers.
+*   **Inputs:** Portfolio watchlist (Top 25), Macro headlines (Fed, Bank of Japan, Interest Rates), Material Events (Oil, Precious Metals, Cryptocurrency, Earnings), 10+ RSS/API sources, 10+ Email Newsletter parsers.
 *   **Processing:** 
     *   Local Semantic deduplication via ChromaDB (Chopping).
-    *   Dynamic tagging and entity counting.
+    *   Dynamic tagging (Entities, Macro Themes, Event Types).
     *   'De-Hype' objective normalization.
     *   **Temporal Sorting:** Categorizing extracted data into "Current Facts" vs "Future Opinions/Predictions".
 *   **Outputs:** Structured JSON summary object exposed via a dedicated REST API endpoint.
@@ -25,7 +25,7 @@ To provide peace and clarity. Given a portfolio of 25+ tickers, macro financial 
 
 ## 5. High-Level Architecture
 1.  **Scalable Ingestion Daemon:** Plug-and-play Python workers pulling varying data sources.
-2.  **Processing Pipeline:** Local Deduplication (Chopping) -> Tag/Counter/Temporal Extraction -> LLM Summarization.
+2.  **Processing Pipeline:** Local Deduplication (Chopping) -> Tag/Theme/Temporal Extraction -> LLM Summarization.
 3.  **Local Datastore:** 
     *   Relational Data: SQLite (Articles, Telemetry).
     *   Vector Data: ChromaDB (Local Embeddings for semantic deduplication).
