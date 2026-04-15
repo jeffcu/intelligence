@@ -10,11 +10,41 @@
   margin-bottom: 2rem;
 }
 
+.tabs-nav {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.tab-btn {
+  padding: 0.8rem 1.5rem;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  color: #888;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  background: #2a2a2a;
+  color: #fff;
+}
+
+.tab-active {
+  background: #00d2ff;
+  color: #000;
+  border-color: #00d2ff;
+}
+
 .telemetry-dashboard {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 1rem;
-  margin-bottom: 3rem;
+  margin-bottom: 2rem;
   background: #111;
   padding: 1.5rem;
   border-radius: 8px;
@@ -22,6 +52,163 @@
   box-shadow: inset 0 0 20px rgba(0, 210, 255, 0.05);
 }
 
+/* Twin Panel Container */
+.config-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 3rem;
+}
+
+/* Source Governance & Target Panels */
+.governance-panel,
+.target-panel {
+  background: #111;
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 1px solid #333;
+}
+
+.governance-panel h2,
+.target-panel h2 {
+  margin-top: 0;
+  color: #00d2ff;
+  font-size: 1.2rem;
+  border-bottom: 1px solid #333;
+  padding-bottom: 0.5rem;
+}
+
+.governance-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  color: #ddd;
+}
+
+.governance-table th, .governance-table td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.governance-table th {
+  color: #888;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+}
+
+.toggle-btn {
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 0.75rem;
+  transition: opacity 0.2s;
+}
+
+.toggle-btn:hover {
+  opacity: 0.8;
+}
+
+.toggle-active {
+  background: #30d158;
+  color: #000;
+}
+
+.toggle-inactive {
+  background: #ff453a;
+  color: #fff;
+}
+
+.add-form {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #333;
+}
+
+.add-form input, .add-form select {
+  padding: 0.6rem;
+  background: #222;
+  border: 1px solid #444;
+  color: #fff;
+  border-radius: 4px;
+  flex: 1;
+}
+
+.add-form select {
+  flex: 0.5;
+}
+
+.add-form input:focus, .add-form select:focus {
+  outline: 1px solid #00d2ff;
+}
+
+.add-form button {
+  padding: 0.6rem 1.5rem;
+  background: #00d2ff;
+  color: #000;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.add-form button:hover {
+  background: #00b8e6;
+}
+
+/* Target Pills */
+.targets-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.target-pill {
+  background: #1e1e1e;
+  border: 1px solid #444;
+  color: #fff;
+  padding: 0.5rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.target-type {
+  color: #00d2ff;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: bold;
+}
+
+.delete-target-btn {
+  background: transparent;
+  border: none;
+  color: #ff453a;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 1rem;
+  padding: 0;
+  margin-left: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.delete-target-btn:hover {
+  color: #ff6b6b;
+}
+
+/* Stats Box */
 .stat-box {
   text-align: center;
   padding: 1rem;
@@ -44,6 +231,22 @@
   color: #00d2ff;
 }
 
+/* Intel Grid */
+.intel-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+
+.intel-controls label {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #888;
+  font-size: 0.9rem;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(650px, 1fr));
@@ -56,6 +259,8 @@
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
 }
 
 .intel-header {
@@ -71,6 +276,7 @@
   display: flex;
   gap: 0.75rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .source-tag {
@@ -117,8 +323,16 @@
 
 .intel-body {
   display: grid;
-  grid-template-columns: 1fr 1fr;
   gap: 1.5rem;
+  flex-grow: 1;
+}
+
+.intel-body.show-raw {
+  grid-template-columns: 1fr 1fr;
+}
+
+.intel-body.hide-raw {
+  grid-template-columns: 1fr;
 }
 
 .col h4 {
@@ -172,4 +386,28 @@
   background: rgba(191, 90, 242, 0.1);
   border-left: 3px solid #bf5af2;
   color: #e0e0e0;
+}
+
+/* Knowledge Graph Lab */
+.graph-lab {
+  background: #111;
+  border: 1px dashed #00d2ff;
+  border-radius: 8px;
+  padding: 3rem;
+  text-align: center;
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.graph-lab h2 {
+  color: #00d2ff;
+  margin-bottom: 1rem;
+}
+
+.graph-lab p {
+  color: #888;
+  max-width: 600px;
 }
