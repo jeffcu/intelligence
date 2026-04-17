@@ -42,12 +42,13 @@ COST_OUTPUT = 0.00000030    # $ per output token
 class TickerBriefing(BaseModel):
     paragraph: str = Field(
         description=(
-            "One paragraph (3-6 sentences) written for an investor. "
-            "Clearly distinguish facts ('the company reported...', 'shares fell X%...') "
-            "from analyst opinions and projections ('analysts expect...', 'the market anticipates...'). "
-            "Cover all significant dimensions present in the articles. "
-            "If nothing material happened, say so plainly and concisely. "
-            "Do not start with the company name or ticker symbol."
+            "4-8 short, punchy sentences — one distinct development per sentence. "
+            "Lead with the biggest news. "
+            "Use plain natural language: 'Earnings tomorrow.', 'CEO joins Ford board.', "
+            "'Partnership with Amazon for $500B announced.', 'Analysts raising price targets.'. "
+            "Conjecture gets a natural qualifier: 'expected', 'analysts project', 'anticipated'. "
+            "No flowery investor language, no 'it is worth noting', no lengthy preamble. "
+            "If nothing material happened, say so in one short sentence."
         )
     )
     sentiment: str = Field(
@@ -179,35 +180,38 @@ def generate_ticker_briefing(client, ticker: str, keywords: list[str], articles)
 
     if not articles:
         return {
-            'paragraph': (
-                f"No articles matched {company} ({ticker}) in the last 24 hours. "
-                "Nothing worth flagging today."
-            ),
+            'paragraph': f"Nothing in the feed for {company} in the last 24 hours.",
             'sentiment': 'Neutral',
             'has_material_events': False,
             'key_facts': [],
         }
 
     context = _build_article_context(articles)
-    prompt = f"""You are a financial intelligence analyst writing a concise daily briefing paragraph for a portfolio investor.
+    prompt = f"""You are writing a quick daily digest for a portfolio investor who wants to know what happened with {ticker} ({company}) in the last 24 hours.
 
 Company: {company} ({ticker})
-Coverage window: last 24 hours
 Source articles: {len(articles)}
 
 --- ARTICLES ---
 {context}
 --- END ARTICLES ---
 
-Instructions:
-1. Write ONE paragraph of 3-6 sentences summarising what happened to {ticker} today.
-2. Clearly label facts vs. conjecture:
-   - Facts: "the company reported...", "shares rose/fell X%...", "the board announced..."
-   - Conjecture: "analysts expect...", "the market anticipates...", "one firm projects..."
-3. Cover all dimensions present: earnings/results, analyst ratings/price targets, leadership, regulatory, macro exposure.
-4. If nothing material happened, say so plainly — e.g. "No material developments today. Analyst sentiment remains broadly constructive."
-5. Do NOT begin with the company name or ticker as the opening word.
-6. No bullet points. One flowing paragraph only.
+Write 4-8 short, punchy sentences. One distinct development per sentence. Lead with the most significant news.
+
+Style guide — write EXACTLY like these examples:
+  "Earnings report tomorrow before market open."
+  "Analysts at Goldman raised price target from $180 to $210."
+  "Strategic partnership with Amazon announced, $500B in contracted sales."
+  "CEO joining Ford's board of directors."
+  "Lawsuit over union practices expected to have minimal financial impact."
+  "Shares fell 3.2% on broader market sell-off."
+
+Rules:
+- Confirmed facts get stated directly. Analyst projections and expectations get words like "expected", "analysts project", "anticipated", "forecast".
+- No bullet points — write as sentences but keep each one short and direct.
+- Do NOT start with the company name or ticker symbol as the opening word.
+- No "it is worth noting", no formal investor-ese, no lengthy preamble.
+- If nothing material happened, one sentence is enough: "Nothing significant today — analyst sentiment broadly steady."
 """
 
     t0 = time.time()
