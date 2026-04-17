@@ -1,5 +1,8 @@
 import sqlite3
 import json
+import sys
+import threading
+import subprocess
 from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, HTTPException
@@ -7,6 +10,8 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+
+SUMMARIZER = Path(__file__).parent / "summarizer.py"
 
 
 DB_PATH = Path(__file__).parent / "intelligence.db"
@@ -35,6 +40,19 @@ def ensure_schema():
             keyword TEXT NOT NULL,
             added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(target_lock_id, keyword)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS company_summaries (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_value        TEXT NOT NULL,
+            paragraph           TEXT NOT NULL,
+            sentiment           TEXT DEFAULT "Neutral",
+            has_material_events INTEGER DEFAULT 0,
+            key_facts           TEXT DEFAULT "[]",
+            article_count       INTEGER DEFAULT 0,
+            generated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
 
@@ -462,6 +480,61 @@ def get_knowledge_graph():
             return {"nodes": list(nodes.values()), "links": links}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Graph Matrix Error: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Company Summaries
+# ---------------------------------------------------------------------------
+
+@app.get("/api/summaries/latest")
+def get_latest_summaries():
+    """Return the most recent briefing paragraph per tracked ticker."""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='company_summaries'")
+            if not cursor.fetchone():
+                return []
+            # Most recent row per ticker
+            cursor.execute('''
+                SELECT cs.*
+                FROM company_summaries cs
+                INNER JOIN (
+                    SELECT target_value, MAX(generated_at) AS max_gen
+                    FROM company_summaries
+                    GROUP BY target_value
+                ) latest ON cs.target_value = latest.target_value
+                        AND cs.generated_at = latest.max_gen
+                ORDER BY cs.target_value ASC
+            ''')
+            results = []
+            for row in cursor.fetchall():
+                d = dict(row)
+                d['key_facts'] = json.loads(d['key_facts']) if d.get('key_facts') else []
+                results.append(d)
+            return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Summaries Error: {str(e)}")
+
+
+@app.post("/api/summaries/generate")
+def trigger_generate_summaries():
+    """Kick off summarizer.py in a background thread. Returns immediately."""
+    if not SUMMARIZER.exists():
+        raise HTTPException(status_code=503, detail="summarizer.py not found.")
+
+    def _run():
+        try:
+            subprocess.run(
+                [sys.executable, str(SUMMARIZER)],
+                cwd=str(SUMMARIZER.parent),
+            )
+        except Exception as exc:
+            import logging
+            logging.error(f"Background summarizer failed: {exc}")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": "started", "message": "Briefing generation running in the background."}
 
 
 # ---------------------------------------------------------------------------
