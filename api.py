@@ -59,6 +59,7 @@ def ensure_schema():
     safe_alters = [
         "ALTER TABLE articles ADD COLUMN matched_targets TEXT",
         "ALTER TABLE source_performance ADD COLUMN deflected_articles INTEGER DEFAULT 0",
+        'ALTER TABLE company_summaries ADD COLUMN target_type TEXT DEFAULT "Ticker"',
     ]
     for stmt in safe_alters:
         try:

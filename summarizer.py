@@ -1,11 +1,13 @@
 """
-Daily Company Briefing Summarizer
-==================================
-For each Ticker target, reads all matched articles from the last 24 hours and
-asks Gemini to write a single, investor-grade paragraph that:
-  - Clearly separates confirmed facts from analyst projections / conjecture
-  - Covers all material dimensions (earnings, ratings, leadership, regulatory, macro)
-  - Says something honest when there's nothing to say
+Daily Briefing Summarizer
+==========================
+Generates punchy digest paragraphs for every tracked target:
+  - Ticker targets  → company briefings (what happened to this stock today)
+  - Topic targets   → theme briefings  (what happened in this macro / sector / theme)
+
+Each paragraph is 4-8 short sentences, one development per sentence, leading with
+the most significant news. Facts stated directly; conjecture gets "expected /
+anticipated / analysts project".
 
 Run automatically at 2pm by news_scheduler.py, or manually:
     python summarizer.py
@@ -36,10 +38,10 @@ COST_OUTPUT = 0.00000030    # $ per output token
 
 
 # ---------------------------------------------------------------------------
-# Gemini output schema
+# Gemini output schema  (shared by ticker + topic briefings)
 # ---------------------------------------------------------------------------
 
-class TickerBriefing(BaseModel):
+class Briefing(BaseModel):
     paragraph: str = Field(
         description=(
             "4-8 short, punchy sentences — one distinct development per sentence. "
@@ -77,6 +79,7 @@ def ensure_summaries_table(cursor):
         CREATE TABLE IF NOT EXISTS company_summaries (
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
             target_value        TEXT NOT NULL,
+            target_type         TEXT DEFAULT "Ticker",
             paragraph           TEXT NOT NULL,
             sentiment           TEXT DEFAULT "Neutral",
             has_material_events INTEGER DEFAULT 0,
@@ -85,22 +88,27 @@ def ensure_summaries_table(cursor):
             generated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    # Migrate older schema that lacks target_type
+    try:
+        cursor.execute('ALTER TABLE company_summaries ADD COLUMN target_type TEXT DEFAULT "Ticker"')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
 
 
 def _is_equity_ticker(value: str) -> bool:
-    """Skip CUSIPs, fund codes, and other non-equity identifiers."""
-    if len(value) >= 8:          # CUSIPs are 9 chars; fund codes tend to be long
+    """Return False for CUSIPs, ISIN-like codes, and numeric fund identifiers."""
+    if len(value) >= 8:
         return False
     if any(c.isdigit() for c in value) and len(value) > 5:
-        return False             # Identifiers like 91282CFU0
+        return False
     return True
 
 
 def get_ticker_targets(cursor):
-    """Return list of {id, ticker, keywords[]} for all equity Ticker target locks."""
+    """Return [{ticker, keywords}] for all equity Ticker target locks."""
     cursor.execute('''
         SELECT tl.id, tl.target_value,
-               GROUP_CONCAT(tk.keyword, "||") as kw_blob
+               GROUP_CONCAT(tk.keyword, "||") AS kw_blob
         FROM target_locks tl
         LEFT JOIN target_keywords tk ON tk.target_lock_id = tl.id
         WHERE tl.target_type = "Ticker"
@@ -118,11 +126,23 @@ def get_ticker_targets(cursor):
     return results
 
 
-def get_recent_articles(cursor, ticker: str, hours: int = 24):
-    """Return articles from the last `hours` that are matched to this ticker."""
-    since = (datetime.now() - timedelta(hours=hours)).strftime('%Y-%m-%dT%H:%M:%S')
+def get_topic_targets(cursor):
+    """Return [{topic, target_type}] for all non-Ticker target locks."""
+    cursor.execute('''
+        SELECT tl.id, tl.target_type, tl.target_value
+        FROM target_locks tl
+        WHERE tl.target_type != "Ticker"
+        ORDER BY tl.target_value
+    ''')
+    return [
+        {'topic': row['target_value'], 'target_type': row['target_type']}
+        for row in cursor.fetchall()
+    ]
 
-    # matched_targets is a JSON array; use json_each for a proper contains check
+
+def get_recent_articles_by_target(cursor, target_value: str, hours: int = 24):
+    """Return articles from the last `hours` matched to this target value."""
+    since = (datetime.now() - timedelta(hours=hours)).strftime('%Y-%m-%dT%H:%M:%S')
     cursor.execute('''
         SELECT title, dehyped_summary, current_facts, future_opinions,
                event_type, impact_score, hype_score, source, published_at
@@ -133,8 +153,8 @@ def get_recent_articles(cursor, ticker: str, hours: int = 24):
               WHERE value = ?
           )
         ORDER BY impact_score DESC
-        LIMIT 12
-    ''', (since, ticker))
+        LIMIT 15
+    ''', (since, target_value))
     return cursor.fetchall()
 
 
@@ -145,25 +165,39 @@ def log_ai_usage(cursor, response, request_type: str):
     c = response.usage_metadata.candidates_token_count or 0
     t = response.usage_metadata.total_token_count or 0
     cost = (p * COST_INPUT) + (c * COST_OUTPUT)
-    latency_ms = 0  # already tracked by caller
     cursor.execute('''
         INSERT INTO ai_usage_logs
             (model_id, request_type, prompt_tokens, completion_tokens,
              total_tokens, estimated_cost_usd, latency_ms, status_code)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (MODEL, request_type, p, c, t, cost, latency_ms, 200))
+    ''', (MODEL, request_type, p, c, t, cost, 0, 200))
+
+
+def _store_summary(cursor, target_value: str, target_type: str, result: dict, article_count: int):
+    cursor.execute('''
+        INSERT INTO company_summaries
+            (target_value, target_type, paragraph, sentiment, has_material_events,
+             key_facts, article_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        target_value,
+        target_type,
+        result['paragraph'],
+        result.get('sentiment', 'Neutral'),
+        1 if result.get('has_material_events') else 0,
+        json.dumps(result.get('key_facts', [])),
+        article_count,
+    ))
 
 
 # ---------------------------------------------------------------------------
-# Summary generation
+# Context builder
 # ---------------------------------------------------------------------------
 
 def _company_label(ticker: str, keywords: list[str]) -> str:
-    """Pick the most readable company name from keyword list, fall back to ticker."""
     candidates = [k for k in keywords if k.lower() != ticker.lower() and len(k) > 2]
     if not candidates:
         return ticker
-    # Prefer the longest keyword that looks like a real name (no special chars)
     real_names = [k for k in candidates if re.match(r'^[a-z0-9& ]+$', k, re.I)]
     pool = real_names or candidates
     return max(pool, key=len).title()
@@ -187,8 +221,11 @@ def _build_article_context(articles) -> str:
     return "\n\n---\n\n".join(blocks)
 
 
+# ---------------------------------------------------------------------------
+# Briefing generation — Ticker
+# ---------------------------------------------------------------------------
+
 def generate_ticker_briefing(client, ticker: str, keywords: list[str], articles) -> dict:
-    """Call Gemini and return a TickerBriefing dict. Handles zero-article case locally."""
     company = _company_label(ticker, keywords)
 
     if not articles:
@@ -220,11 +257,11 @@ Style guide — write EXACTLY like these examples:
   "Shares fell 3.2% on broader market sell-off."
 
 Rules:
-- Confirmed facts get stated directly. Analyst projections and expectations get words like "expected", "analysts project", "anticipated", "forecast".
-- No bullet points — write as sentences but keep each one short and direct.
+- Confirmed facts stated directly. Projections and expectations get "expected", "analysts project", "anticipated", "forecast".
+- No bullet points — short sentences only.
 - Do NOT start with the company name or ticker symbol as the opening word.
-- No "it is worth noting", no formal investor-ese, no lengthy preamble.
-- If nothing material happened, one sentence is enough: "Nothing significant today — analyst sentiment broadly steady."
+- No "it is worth noting", no formal investor-ese.
+- If nothing material happened: "Nothing significant today — analyst sentiment broadly steady."
 """
 
     t0 = time.time()
@@ -233,7 +270,7 @@ Rules:
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
-            response_schema=TickerBriefing,
+            response_schema=Briefing,
             temperature=0.15,
         ),
     )
@@ -246,7 +283,70 @@ Rules:
     if raw.endswith('```'):
         raw = raw[:-3]
     result = json.loads(raw.strip())
-    result['_response'] = response   # carry response for usage logging
+    result['_response'] = response
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Briefing generation — Topic
+# ---------------------------------------------------------------------------
+
+def generate_topic_briefing(client, topic: str, articles) -> dict:
+    if not articles:
+        return {
+            'paragraph': f"Nothing significant on {topic} in the last 24 hours.",
+            'sentiment': 'Neutral',
+            'has_material_events': False,
+            'key_facts': [],
+        }
+
+    context = _build_article_context(articles)
+    prompt = f"""You are writing a quick daily digest about the topic "{topic}" for a portfolio investor.
+
+Topic: {topic}
+Source articles: {len(articles)}
+
+--- ARTICLES ---
+{context}
+--- END ARTICLES ---
+
+Write 4-8 short, punchy sentences covering the key developments on this topic today. One distinct development per sentence. Lead with the most significant news.
+
+Style guide — write EXACTLY like these examples:
+  "Gold hit a new all-time high above $3,300/oz."
+  "Bitcoin surged past $95,000 on renewed institutional buying."
+  "Trump signed an executive order targeting tech sector tariffs."
+  "Fed officials signaled rates could stay higher for longer."
+  "Crude oil fell 2.1% on demand concerns from China slowdown data."
+
+Rules:
+- Confirmed facts stated directly. Projections and expectations get "expected", "anticipated", "forecast".
+- No bullet points — short sentences only.
+- Do NOT start with the topic name as the opening word.
+- No "it is worth noting", no formal investor-ese.
+- If nothing material happened: "Quiet day for {topic} — no major developments."
+"""
+
+    t0 = time.time()
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=Briefing,
+            temperature=0.15,
+        ),
+    )
+    elapsed_ms = int((time.time() - t0) * 1000)
+    logging.info(f"    Gemini responded in {elapsed_ms}ms")
+
+    raw = response.text.strip()
+    if raw.startswith('```json'):
+        raw = raw[7:]
+    if raw.endswith('```'):
+        raw = raw[:-3]
+    result = json.loads(raw.strip())
+    result['_response'] = response
     return result
 
 
@@ -264,49 +364,53 @@ def main():
     ensure_summaries_table(cursor)
     conn.commit()
 
-    targets = get_ticker_targets(cursor)
-    if not targets:
-        logging.info("No Ticker targets configured — nothing to summarise.")
-        conn.close()
-        return
-
     client = genai.Client(api_key=API_KEY)
-    logging.info(f"Generating briefings for {len(targets)} ticker(s)...")
 
-    for t in targets:
+    # ── Ticker briefings ────────────────────────────────────────────────────
+    ticker_targets = get_ticker_targets(cursor)
+    logging.info(f"Generating briefings for {len(ticker_targets)} equity ticker(s)...")
+
+    for t in ticker_targets:
         ticker   = t['ticker']
         keywords = t['keywords']
-        articles = get_recent_articles(cursor, ticker)
+        articles = get_recent_articles_by_target(cursor, ticker)
         logging.info(f"  {ticker}: {len(articles)} article(s) in last 24h")
 
         try:
             result   = generate_ticker_briefing(client, ticker, keywords, articles)
             response = result.pop('_response', None)
-
             if response:
-                log_ai_usage(cursor, response, 'company-briefing')
-
-            cursor.execute('''
-                INSERT INTO company_summaries
-                    (target_value, paragraph, sentiment, has_material_events,
-                     key_facts, article_count)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (
-                ticker,
-                result['paragraph'],
-                result.get('sentiment', 'Neutral'),
-                1 if result.get('has_material_events') else 0,
-                json.dumps(result.get('key_facts', [])),
-                len(articles),
-            ))
+                log_ai_usage(cursor, response, 'ticker-briefing')
+            _store_summary(cursor, ticker, 'Ticker', result, len(articles))
             conn.commit()
-            logging.info(f"  {ticker}: stored ({result.get('sentiment')} / "
-                         f"material={result.get('has_material_events')})")
-
+            logging.info(f"  {ticker}: stored ({result.get('sentiment')} / material={result.get('has_material_events')})")
         except Exception as e:
             logging.error(f"  {ticker}: briefing failed — {e}")
 
-        time.sleep(1.5)   # polite pause between Gemini calls
+        time.sleep(1.5)
+
+    # ── Topic briefings ─────────────────────────────────────────────────────
+    topic_targets = get_topic_targets(cursor)
+    logging.info(f"Generating briefings for {len(topic_targets)} topic(s)...")
+
+    for t in topic_targets:
+        topic       = t['topic']
+        target_type = t['target_type']
+        articles    = get_recent_articles_by_target(cursor, topic)
+        logging.info(f"  [{target_type}] {topic}: {len(articles)} article(s) in last 24h")
+
+        try:
+            result   = generate_topic_briefing(client, topic, articles)
+            response = result.pop('_response', None)
+            if response:
+                log_ai_usage(cursor, response, 'topic-briefing')
+            _store_summary(cursor, topic, target_type, result, len(articles))
+            conn.commit()
+            logging.info(f"  {topic}: stored ({result.get('sentiment')} / material={result.get('has_material_events')})")
+        except Exception as e:
+            logging.error(f"  {topic}: topic briefing failed — {e}")
+
+        time.sleep(1.5)
 
     conn.close()
     logging.info("Briefing generation complete.")
