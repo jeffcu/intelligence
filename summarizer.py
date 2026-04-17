@@ -96,10 +96,17 @@ def ensure_summaries_table(cursor):
 
 
 def _is_equity_ticker(value: str) -> bool:
-    """Return False for CUSIPs, ISIN-like codes, and numeric fund identifiers."""
-    if len(value) >= 8:
+    """Return False for CUSIPs, numeric fund codes, and mutual fund tickers.
+    Mutual funds follow the US convention of exactly 5 chars ending in X.
+    ETFs (SPY, VOO, QQQ) and equities (AAPL, GOOGL) are kept.
+    """
+    if not value:
         return False
-    if any(c.isdigit() for c in value) and len(value) > 5:
+    if value[0].isdigit():          # CUSIPs / numeric fund codes (91282CFU0, 9999227)
+        return False
+    if len(value) >= 8:             # Long identifiers
+        return False
+    if len(value) == 5 and value.upper().endswith('X'):  # SMLPX, PYMPX, HGIFX…
         return False
     return True
 

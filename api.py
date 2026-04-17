@@ -238,10 +238,18 @@ def sync_targets(request: TargetSyncRequest):
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
+            def _is_equity_ticker(v: str) -> bool:
+                """Reject CUSIPs, numeric fund codes, and 5-char X-ending mutual funds."""
+                if not v or v[0].isdigit() or len(v) >= 8:
+                    return False
+                if len(v) == 5 and v.upper().endswith('X'):
+                    return False
+                return True
+
             new_count = 0
             for ticker in request.tickers:
                 ticker = ticker.strip().upper()
-                if not ticker:
+                if not ticker or not _is_equity_ticker(ticker):
                     continue
 
                 # Check existence before insert to avoid lastrowid ambiguity
