@@ -87,8 +87,17 @@ def ensure_summaries_table(cursor):
     ''')
 
 
+def _is_equity_ticker(value: str) -> bool:
+    """Skip CUSIPs, fund codes, and other non-equity identifiers."""
+    if len(value) >= 8:          # CUSIPs are 9 chars; fund codes tend to be long
+        return False
+    if any(c.isdigit() for c in value) and len(value) > 5:
+        return False             # Identifiers like 91282CFU0
+    return True
+
+
 def get_ticker_targets(cursor):
-    """Return list of {id, ticker, keywords[]} for all Ticker target locks."""
+    """Return list of {id, ticker, keywords[]} for all equity Ticker target locks."""
     cursor.execute('''
         SELECT tl.id, tl.target_value,
                GROUP_CONCAT(tk.keyword, "||") as kw_blob
@@ -100,8 +109,12 @@ def get_ticker_targets(cursor):
     ''')
     results = []
     for row in cursor.fetchall():
+        ticker = row['target_value']
+        if not _is_equity_ticker(ticker):
+            logging.debug(f"  Skipping non-equity identifier: {ticker}")
+            continue
         kws = [k.strip() for k in (row['kw_blob'] or '').split('||') if k.strip()]
-        results.append({'ticker': row['target_value'], 'keywords': kws})
+        results.append({'ticker': ticker, 'keywords': kws})
     return results
 
 
@@ -159,8 +172,8 @@ def _company_label(ticker: str, keywords: list[str]) -> str:
 def _build_article_context(articles) -> str:
     blocks = []
     for a in articles:
-        facts    = json.loads(a['current_facts'])   if a.get('current_facts')   else []
-        opinions = json.loads(a['future_opinions'])  if a.get('future_opinions') else []
+        facts    = json.loads(a['current_facts'])   if a['current_facts']   else []
+        opinions = json.loads(a['future_opinions'])  if a['future_opinions'] else []
         block = (
             f"[{a['event_type']} | Impact {a['impact_score']} | {a['source']}]\n"
             f"Title: {a['title']}\n"
