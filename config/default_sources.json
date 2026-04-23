@@ -1,0 +1,75 @@
+{
+  "_comment": "Default RSS sources seeded into the source registry on first run. Add or remove entries here to change what ships with a fresh install. Sources can also be enabled/disabled at runtime through the Analytics tab without editing this file.",
+  "sources": [
+    {
+      "name": "Yahoo Finance",
+      "url": "https://finance.yahoo.com/news/rssindex",
+      "notes": "Aggregates Reuters, AP, Motley Fool, and Benzinga for general market news. Per-ticker feeds are also built dynamically for each symbol you track."
+    },
+    {
+      "name": "PR Newswire",
+      "url": "https://www.prnewswire.com/rss/news-releases-list.rss",
+      "notes": "Official press releases from public companies. High signal for earnings announcements, executive changes, M&A, and product launches."
+    },
+    {
+      "name": "CNBC",
+      "url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114",
+      "notes": "Breaking financial and market news."
+    },
+    {
+      "name": "MarketWatch",
+      "url": "https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines",
+      "notes": "Real-time market headlines from Dow Jones."
+    },
+    {
+      "name": "SEC EDGAR",
+      "url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&dateb=&owner=include&count=40&output=atom",
+      "notes": "8-K material event filings directly from the SEC. The highest-authority source for earnings, executive changes, and regulatory actions."
+    },
+    {
+      "name": "Wall St Journal",
+      "url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+      "notes": "WSJ markets feed. Paywalled full text but headlines are surfaced via RSS."
+    },
+    {
+      "name": "Bloomberg",
+      "url": "https://feeds.bloomberg.com/markets/news.rss",
+      "notes": "Bloomberg markets feed. Paywalled — headline and lede only. Low pass rate expected."
+    },
+    {
+      "name": "Benzinga",
+      "url": "https://www.benzinga.com/feed",
+      "notes": "Fast-moving market news, analyst calls, and price target changes."
+    },
+    {
+      "name": "Seeking Alpha",
+      "url": "https://seekingalpha.com/feed.xml",
+      "notes": "Opinion-heavy; most articles will be classified General News and filtered. Useful for tracking market sentiment."
+    },
+    {
+      "name": "CoinTelegraph",
+      "url": "https://cointelegraph.com/rss",
+      "notes": "Crypto-focused news. Enable if you track Bitcoin, Ethereum, or crypto macro themes."
+    },
+    {
+      "name": "OilPrice",
+      "url": "https://oilprice.com/rss/main",
+      "notes": "Commodities and energy sector focus. Enable if you track oil, gas, or energy equities."
+    },
+    {
+      "name": "BBC News",
+      "url": "http://feeds.bbci.co.uk/news/rss.xml",
+      "notes": "General world news. Useful for geopolitical and macro themes."
+    },
+    {
+      "name": "DW News",
+      "url": "https://rss.dw.com/rdf/rss-en-all",
+      "notes": "German public broadcaster. Good European macro and geopolitical coverage."
+    },
+    {
+      "name": "South China Morning Post",
+      "url": "https://www.scmp.com/rss/91/feed",
+      "notes": "Asia-Pacific business and geopolitical coverage. Relevant for China-exposed equities."
+    }
+  ]
+}

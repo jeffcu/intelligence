@@ -1,0 +1,35 @@
+{
+  "_comment": "Suggested starting targets. These are not loaded automatically — they are a reference for users setting up their watchlist through the Tracking panel. Add any entry to your feed by clicking Edit in the Tracking panel and entering the value with the matching type.",
+  "tickers": {
+    "_notes": "US equity symbols, 1–5 uppercase letters. Each ticker gets its own dedicated Yahoo Finance RSS feed.",
+    "large_cap_tech": ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "AVGO"],
+    "finance": ["JPM", "GS", "BAC", "BRK.B"],
+    "healthcare": ["JNJ", "UNH", "LLY"],
+    "energy": ["XOM", "CVX"],
+    "indices": ["SPY", "QQQ", "IWM"],
+    "emerging": ["PLTR", "ARM", "SMCI"]
+  },
+  "macro_topics": {
+    "_notes": "Broad economic themes tracked via Google News. Use plain English phrases.",
+    "monetary_policy": ["Interest Rates", "Federal Reserve", "Inflation", "CPI"],
+    "commodities": ["Gold", "Silver", "Copper", "Uranium", "Oil", "Natural Gas"],
+    "crypto": ["Bitcoin", "Ethereum", "Crypto Regulation"],
+    "geopolitical": ["Trade War", "Tariffs", "Sanctions", "Taiwan", "Middle East"],
+    "macro_data": ["GDP", "Jobs Report", "Recession", "Yield Curve"]
+  },
+  "sectors": {
+    "_notes": "Industry themes to surface sector-wide news beyond specific tickers.",
+    "technology": ["Artificial Intelligence", "Semiconductors", "Cloud Computing", "Cybersecurity"],
+    "finance": ["Private Equity", "Hedge Funds", "IPO", "Mergers and Acquisitions"],
+    "energy_transition": ["Nuclear Energy", "Renewable Energy", "EV Battery"],
+    "defense": ["Defense Spending", "Aerospace", "Defense Contracts"]
+  },
+  "companies": {
+    "_notes": "Private companies or names not traded under a simple ticker.",
+    "examples": ["SpaceX", "Anthropic", "OpenAI", "Anduril", "Stripe"]
+  },
+  "people": {
+    "_notes": "Executives, policymakers, or public figures whose statements move markets.",
+    "examples": ["Elon Musk", "Jensen Huang", "Jerome Powell", "Janet Yellen", "Scott Bessent"]
+  }
+}

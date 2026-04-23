@@ -1,180 +1,214 @@
-# Intelligence — Private News Engine
+# Intelligence — Private Financial News Engine
 
-A self-hosted financial and world news service that reads dozens of sources, strips hype and opinion, and surfaces only what actually matters — classified, scored, and summarized by AI. No ads, no engagement algorithms, no clickbait.
+A self-hosted service for private consumers who want to stay informed about assets they own or watch. Intelligence reads dozens of public news sources, strips opinion and hype, and surfaces only what actually happened — classified by event type, scored for significance, and summarized in plain language. No ads, no engagement algorithms, no subscription fees, no clickbait.
+
+**This project is for personal, private use.** It is designed to help individuals identify factual developments that may affect the value of or risk associated with assets they follow — equities, commodities, currencies, macro conditions, or sectors. It does not provide investment advice.
+
+---
+
+## Purpose
+
+Financial news is written to be read, not used. Every article that reaches a retail investor has already been filtered through an editorial lens optimized for engagement — dramatic headlines, speculative commentary, and narratives designed to provoke a reaction. The actual facts, when present at all, are buried in paragraph four and mixed with analyst opinions presented as established truth.
+
+Intelligence inverts this. It reads the same public news sources you would read yourself, then does one job: separate what actually happened from what someone thinks might happen, score how significant the event is, and present only the factual content in a format you can absorb in thirty seconds.
+
+The result is a private briefing service tuned to your specific holdings and topics of interest. If you follow five tickers and three macro themes, you get exactly that — not a general news stream you have to filter yourself.
 
 ---
 
 ## Quick Start
 
-**Prerequisites:** Docker Desktop installed ([docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop))
+**Prerequisites:** Docker Desktop ([docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop))
 
-**1. Create your API key file.**
-In the same folder as `docker-compose.yml`, create a file named `.env` containing:
+**1. Get a free Gemini API key**
+
+Create a key at [aistudio.google.com](https://aistudio.google.com). The free tier (1,500 requests/day) is sufficient for personal use tracking up to 20–30 targets.
+
+**2. Create your key file**
+
+In the folder containing `docker-compose.yml`, create a file named `.env`:
 
 ```
 GEMINI_API_KEY=your_key_here
 ```
 
-Get a free Gemini API key at [aistudio.google.com](https://aistudio.google.com). The free tier is sufficient for personal use.
-
-**2. Start the container.**
+**3. Start the container**
 
 ```bash
 docker compose up -d
 ```
 
-First run downloads the image (~500MB). Subsequent starts are instant.
-
-**3. Open your browser.**
+**4. Open the interface**
 
 ```
 http://localhost:8001
 ```
 
-**4. Add your tickers and topics.**
+**5. Add your targets**
 
-Click **✎ Edit** in the Tracking panel. Add stock tickers (`AAPL`, `NVDA`, `MSFT`) as type **Ticker**, or topics like `Gold`, `Interest Rates`, `Elon Musk` as their respective types.
+Click **✎ Edit** in the Tracking panel. Add stock tickers (`AAPL`, `NVDA`) as type **Ticker**, or topics like `Gold`, `Interest Rates`, `Elon Musk` as their respective types. See `config/starter_topics.json` for a curated starting list.
 
-**5. Run the ingestor to pull your first batch of news.**
+**6. Run your first ingest**
 
 ```bash
 docker exec intelligence python ingestor.py
 ```
 
-After a minute or two, articles appear in the feed. From this point the scheduler runs automatically.
+Articles appear after one to two minutes. The scheduler runs automatically from this point.
 
-**6. Stop / restart.**
+**7. Stop / restart**
 
 ```bash
-docker compose down    # stop
-docker compose up -d   # start again (your data is preserved)
+docker compose down    # stop (your data is preserved)
+docker compose up -d   # start again
 ```
 
 ---
 
 ## Schedule
 
-The engine runs on its own internal schedule (weekdays):
+The engine runs automatically on weekdays:
 
 | Time | Task |
 |------|------|
 | 7:00 AM | Ingest new articles |
-| 8:00 AM | Regenerate AI summaries |
+| 8:00 AM | Regenerate AI briefings |
 | 12:00 PM | Ingest new articles |
-| 2:00 PM | Regenerate AI summaries |
+| 2:00 PM | Regenerate AI briefings |
 | 3:00 PM | Ingest new articles |
-| 5:00 PM | Regenerate AI summaries |
+| 5:00 PM | Regenerate AI briefings |
+
+**Manual triggers** (run any time):
+
+```bash
+docker exec intelligence python ingestor.py    # pull fresh articles now
+docker exec intelligence python summarizer.py  # regenerate briefings now
+```
 
 ---
 
-## How the Engine Works
+## How It Works
 
-Most news services optimize for engagement — they surface whatever makes you click, share, or feel strong emotions. Intelligence optimizes for information density: every article that reaches your feed has been verified to contain real facts, measured against its sensationalism, and classified by event type before you see it. The pipeline has four stages.
+Most news services optimize for engagement. Intelligence optimizes for information density. The pipeline has four stages.
 
-### Stage 1 — Targeting and Fetch
+### Stage 1 — Targeted Fetch
 
-The engine does not fetch a generic news stream. It constructs targeted queries from your tracking list. For each equity ticker you add (`AAPL`, `NVDA`, etc.), it builds a dedicated Yahoo Finance RSS feed that aggregates Reuters, AP, Motley Fool, Seeking Alpha, and Benzinga specifically for that ticker. For topics and themes, it builds Google News RSS queries grouped by type — companies, macro topics, people, sectors — chunked to stay precise.
+The engine builds queries from your tracking list rather than consuming a generic news stream. Each equity ticker gets a dedicated Yahoo Finance RSS feed aggregating Reuters, AP, Motley Fool, Seeking Alpha, and Benzinga specifically for that symbol. Topics, themes, people, and sectors are queried through dynamically-built Google News RSS feeds. Static sources — SEC EDGAR 8-K filings, PR Newswire press releases, CNBC, MarketWatch, and others — run in parallel.
 
-This means the raw input is already signal-dense before any filtering begins. You are not sifting through general news hoping something relevant appears; the fetch layer is constructed specifically around what you said you care about.
+The input is already signal-dense before any filtering begins. See `config/default_sources.json` for the full source list with notes on each.
 
 ### Stage 2 — The Deflector (Keyword Relevance Gate)
 
-Every article title and description is checked against your target keywords using whole-word matching. An article about a company called "Golden Gate Capital" will not match a search for `Gold`. The deflector is fast and runs before any AI processing — articles that don't contain at least one of your target keywords in their text are dropped immediately, saving both time and API cost.
+Every article title and description is checked against your tracked keywords using whole-word matching. An article mentioning "Golden Gate Capital" will not match a search for `Gold`. Articles that don't contain at least one of your target keywords are dropped immediately — before any AI call, at zero cost.
 
-Only articles that pass keyword relevance proceed to the AI stage.
+### Stage 3 — AI Analysis
 
-### Stage 3 — AI Analysis and Tagging
+Each article that clears the deflector is sent to Google Gemini for structured analysis. The AI returns a precise JSON object:
 
-This is the core of the engine. Each article that clears the deflector is sent to Google Gemini for structured analysis. The AI is given the article's title and description and instructed to return a precise JSON object with the following fields:
-
-**`dehyped_summary`** — A 1–2 sentence factual rewrite of the article with all emotional language, superlatives, and value judgments removed. "Nvidia's STUNNING earnings OBLITERATE expectations in massive beat!" becomes "Nvidia reported Q3 earnings of $X per share, exceeding consensus estimates of $Y."
-
-**`current_facts`** — A list of things that are actually true and verifiable right now: specific numbers, confirmed decisions, completed actions.
-
-**`future_opinions`** — Separated cleanly from facts: analyst predictions, management guidance, speculative commentary. These are shown in the feed but visually distinguished, so you always know what has happened versus what someone thinks might happen.
-
-**`entities`** — Major companies, funds, and indices named in the article.
-
-**`macro_themes`** — Broad economic categories the article belongs to: Interest Rates, Commodities, Central Banks, Crypto, etc.
-
-**`event_type`** — A classification from a fixed 13-label taxonomy:
-
-| Label | Meaning |
+| Field | Content |
 |-------|---------|
-| Earnings Report | Quarterly/annual results, EPS, revenue |
-| Earnings Call | Management guidance and forward outlook |
-| Analyst Upgrade | Rating raised, buy/outperform initiated |
-| Analyst Downgrade | Rating cut, sell/underperform |
-| Price Target Change | Analyst raises or lowers a price target |
-| Executive Change | CEO/CFO departure, appointment, resignation |
-| Merger & Acquisition | Deal announced, completed, or terminated |
-| Product Launch | New product, service, or platform |
-| Regulatory Action | FDA ruling, SEC action, antitrust, fine |
-| Policy Decision | Central bank rate decision, government policy |
-| Material Event | Any other company-specific market-moving event |
-| Macro Data | Economic indicators: CPI, jobs report, GDP |
-| General News | Background, opinion, or low-impact coverage |
+| `dehyped_summary` | 1–2 sentence factual rewrite with all emotional language removed |
+| `current_facts` | Specific, verifiable facts: numbers, decisions, completed actions |
+| `future_opinions` | Analyst predictions and speculative commentary, cleanly separated |
+| `entities` | Companies, funds, indices, and executives named in the article |
+| `macro_themes` | Broad economic categories: Interest Rates, AI, Commodities, etc. |
+| `event_type` | Classification from a 13-label taxonomy (see below) |
+| `hype_score` | 0–100 measure of sensationalism in the writing |
+| `impact_score` | 0–100 measure of actual market consequence |
 
-**`hype_score`** (0–100) — How sensationalist the writing is. A straightforward Reuters wire story about a rate decision scores near 0. A Seeking Alpha piece titled "This One Chart Shows Why NVDA Is Going to $2,000" scores near 90.
+**Event type taxonomy:**
 
-**`impact_score`** (0–100) — How much this event actually matters in market terms. A company reporting earnings that beat by 40 cents and raising guidance scores high. A podcast transcript summarizing last week's news scores low.
+Earnings Report · Earnings Call · Analyst Upgrade · Analyst Downgrade · Price Target Change · Executive Change · Merger & Acquisition · Product Launch · Regulatory Action · Policy Decision · Material Event · Macro Data · General News
 
-The engine computes a **Signal** for every article: `impact_score − hype_score`. Only articles with a non-negative Signal appear in the feed. High-impact, low-hype reporting rises; sensationalist noise with no real content is filtered out.
+**Signal** = `impact_score − hype_score`. Articles with negative Signal are filtered from the Newspaper view. High-impact, low-hype reporting rises. Sensationalist content with no real substance is suppressed.
 
-### Stage 4 — The Quality Gate
+### Stage 4 — Quality Gate
 
-After AI classification, a final rule-based check decides whether the article is worth storing. Material events (earnings, executive changes, analyst calls, M&A, regulatory actions) always pass regardless of score — these are exactly the events you track. For everything else, three rejection rules apply:
+A final rule-based check decides whether the article is worth storing:
 
-- **Zero extracted facts + negative signal** → dropped. The AI found nothing concrete and the signal is net negative. This is pure opinion or market color with no informational value.
-- **One fact + strongly negative signal** → dropped. Thin meta-articles, recaps, and "here's what happened last week" summaries don't add new information.
-- **Signal below −25** → dropped unconditionally. No amount of facts justifies publishing deeply hype-poisoned content.
+- **Material events always pass** — earnings, analyst calls, executive changes, M&A, and regulatory actions are the events that move asset prices. They are never discarded on signal grounds.
+- **Zero facts + negative signal** → dropped. Pure opinion with no informational value.
+- **One fact + strongly negative signal** → dropped. Thin recaps that add nothing new.
+- **Signal below −25** → dropped unconditionally. No fact density justifies deeply hype-poisoned content.
 
-Articles that pass all four stages are stored, tagged, and appear in your feed. The source performance table in the Analytics tab shows exactly how many articles each source sends versus how many survive — a direct measure of source quality.
+### Briefings
 
-### Summaries
-
-Three times a day, a separate process reads the last 24 hours of stored articles for each target you track and sends them to Gemini with a single instruction: produce a punchy 4–8 sentence digest, one development per sentence, leading with the most significant event, facts only, no hedging language. The result is the briefing card you see on the Newspaper view — an information-dense snapshot of what actually happened to that ticker or topic today.
-
----
-
-## Why Tagging Makes It Work
-
-Traditional news aggregators show you everything that mentions a keyword. Intelligence shows you only what is about that keyword and has something concrete to say.
-
-The AI tagging layer creates a structured data record for each article rather than treating it as a blob of text. Once an article is tagged, the system can answer precise questions: Is this article primarily about AAPL, or does it merely mention Apple in passing? Is this claim a confirmed fact or an analyst opinion? Is this a material event that moves markets, or general commentary? Did the writer use 15 exclamation points to compensate for having nothing to say?
-
-Because every article carries the same structured schema — facts separated from opinions, event type classified, scores computed — the display layer can make intelligent decisions about what to show and how. The Newspaper front page leads with the highest signal-to-hype article. Material event badges (Earnings, Leadership change, M&A) appear only when the AI confirmed the article is actually about that event, not just adjacent to it. Articles older than 24 hours are visually dimmed, because yesterday's analyst note is not today's news.
-
-The knowledge graph in the Analytics tab is a direct byproduct of tagging: every entity the AI extracted from every article becomes a node, and every article that mentions two entities together creates a weighted link between them. The graph shows you who is connected to what, derived entirely from what has been written about in the last 150 articles — a real-time map of the information space around your targets.
+Three times daily, a separate process reads the last 24 hours of stored articles for each target and sends them to Gemini with one instruction: produce a 4–8 sentence digest, one development per sentence, leading with the most significant event, facts only, no hedging language. This is the briefing card on the Newspaper view — an information-dense snapshot of what actually happened today.
 
 ---
 
 ## Views
 
-**Newspaper** — Default view. Lead story ranked by signal, featured stories, full AI briefings per ticker and topic, earnings calendar and IPO pipeline always visible.
+**Newspaper** — Lead story ranked by signal, featured stories, Earnings Calendar, IPO Pipeline, and full AI briefings per ticker and topic.
 
-**Intelligence Feed** — Scrollable list of every article in chronological/signal order. Expand any card to see the full de-hyped summary, extracted facts, future projections, and source link.
+**Feed** — Scrollable chronological list. Expand any card to see the full de-hyped summary, extracted facts, future projections, and source link.
 
-**Analytics** — Source performance league table (which feeds produce the most signal vs. noise) and the entity knowledge graph.
+**Analytics** — Source performance table (pass rate, hype score, dedup rate per outlet), theme mix bar chart, and the Knowledge Graph.
+
+### Knowledge Graph
+
+Three modes showing different dimensions of your information landscape:
+
+| Mode | Primary nodes | Secondary nodes | What it shows |
+|------|---------------|-----------------|---------------|
+| Focus → Themes | Your tracked targets (gold) | AI-extracted macro themes | What narratives your positions are generating |
+| Focus → Sources | Your tracked targets (gold) | News sources | Which outlets are covering which of your holdings |
+| Themes → Sources | Macro themes | News sources | Each outlet's editorial focus and topic coverage |
+
+Click any node to zoom in, dim unrelated connections, and see linked articles. Click **← Back** to return to the full graph.
+
+---
+
+## Sources
+
+The default source list is in `config/default_sources.json`. Sources can be enabled or disabled at runtime from the Analytics tab without restarting the engine.
+
+**Current defaults:** Yahoo Finance (per-ticker feeds), PR Newswire, CNBC, MarketWatch, SEC EDGAR (8-K filings), Wall Street Journal, Bloomberg, Benzinga, Seeking Alpha, CoinTelegraph, OilPrice, BBC News, DW News, South China Morning Post.
+
+Note on paywalled sources: Bloomberg and WSJ are included because their headlines and RSS-syndicated summaries are publicly available and often contain enough factual signal. Full article text is not accessed. Pass rates for these sources will be lower than open-access sources.
+
+---
+
+## Starter Targets
+
+`config/starter_topics.json` contains a curated list of tickers, macro topics, sectors, private companies, and notable individuals organized by category. These are suggestions. Use the Tracking panel to add exactly what you follow.
+
+---
+
+## Information Sources and Copyright
+
+Intelligence reads **RSS feeds** — structured data feeds that news organizations publish specifically for automated consumption and redistribution. RSS syndication is the standard mechanism by which publishers make headlines and summaries available to aggregators, readers, and third-party services. Subscribing to an RSS feed is the digital equivalent of reading a newspaper that the publisher placed on a public stand.
+
+**What the engine extracts is facts, not prose.** Facts — specific numbers, named decisions, confirmed actions, dates, prices, and ratings — are not protected by copyright. Copyright protects original creative expression: the particular way a journalist chose to construct a sentence. The AI analysis discards that expression entirely and produces new, independently-written output containing only the factual claims.
+
+In practice:
+
+- The engine reads headlines and RSS-syndicated summaries. Full article text is accessed only when an RSS entry is too short to analyze (under 50 characters), and only to extract factual claims — not to reproduce the writing.
+- Every article is rewritten by AI in plain factual language. The output shares no prose with the source.
+- No original content is stored in full, redistributed, or published. All output remains on the user's own machine.
+- Users are linked to the original source for complete reading.
+- The service is personal and private — it has no users other than the person who runs it, no advertising, and no commercial purpose.
+
+This approach mirrors how financial data terminals, news aggregators, and search engine caches have legally operated for decades. The transformation of raw news into structured factual data, retained privately for personal reference, is a well-established use of publicly syndicated information.
 
 ---
 
 ## Costs
 
-Google Gemini API usage is minimal. A typical day of ingestion across 10–15 targets costs between $0.01 and $0.05. The free tier (1,500 requests/day) is sufficient unless you track a very large number of targets. Your usage is shown in the Intelligence Engine bar at the top of every page.
+Google Gemini API usage is minimal. A typical day of ingestion across 10–15 targets costs between $0.01 and $0.05. The free tier (1,500 requests/day) covers most personal installations. Current usage is shown in the engine status bar at the top of every page.
 
 ---
 
 ## Troubleshooting
 
-**No articles appearing after running the ingestor:**
-Make sure you have added at least one target in the Tracking panel before running the ingestor. The engine only fetches feeds for targets you have defined.
+**No articles after running the ingestor:**
+Add at least one target in the Tracking panel before running the ingestor. The engine only fetches feeds for targets you have defined.
 
-**API error / offline banner:**
-The container may not have started correctly. Run `docker compose logs` to see what happened.
+**API offline banner:**
+The container may not have started. Run `docker compose logs` to see what happened.
 
 **Summaries are stale:**
-Summaries regenerate three times daily. To force an immediate refresh: `docker exec intelligence python summarizer.py`
+Force a refresh: `docker exec intelligence python summarizer.py`
 
-**Run the ingestor manually at any time:**
-`docker exec intelligence python ingestor.py`
+**Earnings Calendar empty:**
+Requires at least one Ticker-type target. The calendar pulls live data from Yahoo Finance on each page load.
