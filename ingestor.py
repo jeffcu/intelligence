@@ -25,8 +25,8 @@ load_dotenv()
 API_KEY = os.getenv("GEMINI_API_KEY")
 
 # DB & Vector Coordinates
-DB_PATH = Path(__file__).parent / "intelligence.db"
-CHROMA_PATH = Path(__file__).parent / "chroma_db"
+DB_PATH     = Path(os.getenv("DB_PATH",     str(Path(__file__).parent / "intelligence.db")))
+CHROMA_PATH = Path(os.getenv("CHROMA_PATH", str(Path(__file__).parent / "chroma_db")))
 
 # Pydantic Structural Containment Field
 class ArticleAnalysis(BaseModel):
@@ -156,6 +156,10 @@ def init_db():
         ('DW News',                'https://rss.dw.com/rdf/rss-en-all',                  1, 'rss'),
         ('BBC News',               'http://feeds.bbci.co.uk/news/rss.xml',               1, 'rss'),
         ('SEC EDGAR',              'https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&dateb=&owner=include&count=40&output=atom', 1, 'rss'),
+        # Wire services and financial press — verified working feeds
+        ('PR Newswire',            'https://www.prnewswire.com/rss/news-releases-list.rss',                                              1, 'rss'),
+        ('CNBC',                   'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114',               1, 'rss'),
+        ('MarketWatch',            'https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines',                                  1, 'rss'),
     ]
     cursor.executemany('''
         INSERT OR IGNORE INTO source_registry (source_name, feed_url, is_active, source_type)

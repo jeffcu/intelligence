@@ -1,0 +1,16 @@
+services:
+  intelligence:
+    image: yourdockerhub/intelligence:latest   # swap in your Docker Hub image once pushed
+    # build: .                                 # uncomment this line (and comment the image line)
+    #                                          # if you're running from the source folder instead
+    container_name: intelligence
+    ports:
+      - "8001:8001"
+    volumes:
+      - intel-data:/app/data     # all articles, summaries, and the knowledge graph persist here
+    env_file:
+      - .env                     # put your GEMINI_API_KEY in this file (see README)
+    restart: unless-stopped      # auto-restarts if your machine reboots
+
+volumes:
+  intel-data:

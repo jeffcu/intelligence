@@ -9,3 +9,4 @@ beautifulsoup4>=4.12.3
 requests>=2.31.0
 chromadb>=0.4.22
 markdownify>=0.11.6
+yfinance>=0.2.54

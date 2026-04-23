@@ -20,15 +20,20 @@ logging.basicConfig(
 
 INGESTOR  = Path(__file__).parent / "ingestor.py"
 SUMMARIZER = Path(__file__).parent / "summarizer.py"
-PYTHON    = sys.executable
+# Always use the venv Python so feedparser/chromadb etc. are available,
+# regardless of which Python launched the scheduler.
+_venv_python = Path(__file__).parent / "venv" / "bin" / "python"
+PYTHON = str(_venv_python) if _venv_python.exists() else sys.executable
 
 # Scheduled run times: (hour, minute, task)
 # Tasks: 'ingest' | 'summarize'
 SCHEDULE = [
     (7,  0,  'ingest'),
+    (8,  0,  'summarize'),   # 8 AM  — morning briefings
     (12, 0,  'ingest'),
-    (14, 0,  'summarize'),   # 2 PM — daily company briefing generation
+    (14, 0,  'summarize'),   # 2 PM  — midday briefings
     (15, 0,  'ingest'),
+    (17, 0,  'summarize'),   # 5 PM  — end-of-day briefings
 ]
 
 

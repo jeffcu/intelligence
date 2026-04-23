@@ -52,12 +52,58 @@
   box-shadow: inset 0 0 20px rgba(0, 210, 255, 0.05);
 }
 
+/* Collapsible config section */
+.config-section {
+  margin-bottom: 1.5rem;
+}
+
+.config-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #888;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s, color 0.2s;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.config-toggle:hover {
+  border-color: #00d2ff;
+  color: #ccc;
+}
+
+.config-toggle-arrow {
+  color: #00d2ff;
+  font-size: 0.85rem;
+  width: 12px;
+  display: inline-block;
+}
+
+.config-toggle-hint {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: #555;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 /* Twin Panel Container */
 .config-panels {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.5rem;
-  margin-bottom: 3rem;
+  margin-top: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 /* Source Governance & Target Panels */
@@ -235,6 +281,7 @@
 .intel-controls {
   display: flex;
   justify-content: flex-end;
+  gap: 1.5rem;
   margin-bottom: 1rem;
 }
 
@@ -410,4 +457,120 @@
 .graph-lab p {
   color: #888;
   max-width: 600px;
+}
+
+/* ── Newspaper Front Page View ── */
+.newspaper-view {
+  padding-top: 0.5rem;
+}
+
+.newspaper-masthead {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.masthead-date {
+  font-size: 0.8rem;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 0.5rem;
+}
+
+.masthead-rule {
+  border-top: 3px double #333;
+}
+
+.newspaper-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+}
+
+/* Lead story: full row */
+.news-lead {
+  grid-column: 1 / -1;
+  padding: 1.5rem 1.5rem 1.5rem 0;
+  border-bottom: 2px solid #333;
+  margin-bottom: 0;
+}
+
+/* Featured stories: side-by-side in columns 1–2, third in col 3 */
+.news-featured {
+  padding: 1.25rem;
+  border-bottom: 1px solid #333;
+  border-right: 1px solid #333;
+}
+
+.news-featured:last-of-type {
+  border-right: none;
+}
+
+/* Column fillers */
+.news-column {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #222;
+  border-right: 1px solid #222;
+}
+
+.news-column:nth-child(3n) {
+  border-right: none;
+}
+
+.news-byline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.news-headline {
+  margin: 0 0 0.75rem 0;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.news-lead .news-headline {
+  font-size: 1.75rem;
+  color: #fff;
+}
+
+.news-featured .news-headline {
+  font-size: 1.15rem;
+  color: #eee;
+}
+
+.news-column .news-headline {
+  font-size: 0.95rem;
+  color: #ddd;
+}
+
+.news-headline a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.news-headline a:hover {
+  color: #00d2ff;
+  text-decoration: underline;
+}
+
+.news-lede {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #bbb;
+  margin: 0 0 1rem 0;
+}
+
+.news-lede--short {
+  font-size: 0.88rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.news-facts {
+  margin-top: 0.75rem;
 }

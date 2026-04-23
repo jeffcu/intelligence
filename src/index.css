@@ -1,11 +1,18 @@
 :root {
+  --dark-bg: #1a1a1a;
+  --medium-bg: #242424;
+  --light-bg: #2f2f2f;
+  --border-color: #444;
+  --text-color: rgba(255, 255, 255, 0.87);
+  --gold-accent: #E2B254;
+
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
+  color-scheme: dark;
   color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  background-color: var(--medium-bg);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -15,8 +22,13 @@
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  background-color: var(--medium-bg);
+}
+
+#root {
+  padding: 2rem;
+  max-width: 1140px;
+  margin: 0 auto;
 }

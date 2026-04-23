@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import json
 import sys
@@ -8,13 +9,14 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 
 SUMMARIZER = Path(__file__).parent / "summarizer.py"
 
 
-DB_PATH = Path(__file__).parent / "intelligence.db"
+DB_PATH = Path(os.getenv("DB_PATH", str(Path(__file__).parent / "intelligence.db")))
 
 
 def get_db_connection():
@@ -60,6 +62,7 @@ def ensure_schema():
         "ALTER TABLE articles ADD COLUMN matched_targets TEXT",
         "ALTER TABLE source_performance ADD COLUMN deflected_articles INTEGER DEFAULT 0",
         'ALTER TABLE company_summaries ADD COLUMN target_type TEXT DEFAULT "Ticker"',
+        'ALTER TABLE source_registry ADD COLUMN country TEXT DEFAULT "US"',
     ]
     for stmt in safe_alters:
         try:
@@ -115,7 +118,7 @@ class KeywordCreate(BaseModel):
 # Health
 # ---------------------------------------------------------------------------
 
-@app.get("/")
+@app.get("/health-check")
 def root_index():
     return {"status": "online", "message": "Intelligence API Core is humming."}
 
@@ -397,7 +400,7 @@ def get_sources():
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT sr.source_name, sr.feed_url, sr.is_active, sr.added_at,
+                SELECT sr.source_name, sr.feed_url, sr.is_active, sr.added_at, sr.country,
                        COALESCE(sp.total_articles_ingested, 0)       as total_articles_ingested,
                        COALESCE(sp.redundant_articles_chopped, 0)    as redundant_articles_chopped,
                        COALESCE(sp.deflected_articles, 0)            as deflected_articles,
@@ -504,16 +507,14 @@ def get_latest_summaries():
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='company_summaries'")
             if not cursor.fetchone():
                 return []
-            # Most recent row per ticker
+            # Most recent row per ticker — MAX(rowid) breaks ties when two runs
+            # produce identical generated_at timestamps (parallel summarizer race).
             cursor.execute('''
                 SELECT cs.*
                 FROM company_summaries cs
-                INNER JOIN (
-                    SELECT target_value, MAX(generated_at) AS max_gen
-                    FROM company_summaries
-                    GROUP BY target_value
-                ) latest ON cs.target_value = latest.target_value
-                        AND cs.generated_at = latest.max_gen
+                WHERE cs.rowid IN (
+                    SELECT MAX(rowid) FROM company_summaries GROUP BY target_value
+                )
                 ORDER BY cs.target_value ASC
             ''')
             results = []
@@ -547,6 +548,175 @@ def trigger_generate_summaries():
 
 
 # ---------------------------------------------------------------------------
+# Earnings Calendar
+# ---------------------------------------------------------------------------
+
+def _earnings_date_label(epoch_seconds: int) -> str:
+    """Convert a Unix timestamp to a human calendar label relative to today."""
+    from datetime import date, timedelta
+    today = date.today()
+    event = date.fromtimestamp(epoch_seconds)
+    delta = (event - today).days
+    if delta == 0:   return 'Today'
+    if delta == 1:   return 'Tomorrow'
+    if delta == -1:  return 'Yesterday'
+    if -7 < delta < 0:  return f'{abs(delta)}d ago'
+    if 1 < delta <= 7:  return event.strftime('%A')       # e.g. "Wednesday"
+    if 7 < delta <= 14: return 'Next Week'
+    if delta > 14:   return event.strftime('%b %-d')      # e.g. "May 12"
+    return event.strftime('%b %-d')
+
+
+@app.get("/api/earnings-calendar")
+def get_earnings_calendar():
+    """
+    Return upcoming / recent earnings dates for all tracked tickers via yfinance.
+    """
+    import yfinance as yf
+    from datetime import date
+    import time
+
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT target_value FROM target_locks WHERE target_type = 'Ticker'")
+            tickers = [row['target_value'] for row in cursor.fetchall()]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    today = date.today()
+    results = []
+
+    for ticker in tickers:
+        try:
+            cal = yf.Ticker(ticker).calendar
+            if not cal or 'Earnings Date' not in cal:
+                continue
+            dates = cal['Earnings Date']
+            if not dates:
+                continue
+            event_date = dates[0]
+            if hasattr(event_date, 'date'):
+                event_date = event_date.date()
+            delta = (event_date - today).days
+            if delta > 90 or delta < -14:
+                continue
+            ts = int(time.mktime(event_date.timetuple()))
+            results.append({
+                'ticker':    ticker,
+                'date':      event_date.isoformat(),
+                'label':     _earnings_date_label(ts),
+                'delta':     delta,
+                'confirmed': len(dates) == 1,
+                'eps_est':   round(float(cal.get('Earnings Average') or 0), 2),
+            })
+        except Exception:
+            continue
+
+    results.sort(key=lambda x: x['delta'])
+    return results
+
+
+# ---------------------------------------------------------------------------
+# IPO Events
+# ---------------------------------------------------------------------------
+
+_IPO_TITLE_RE = __import__('re').compile(
+    r'\bIPO\b|S-1 filing|files? for IPO|initial public offering|going public|'
+    r'IPO pric\w+|IPO sched\w+|IPO date|set to (?:go|list)|begin(?:s)? trading|'
+    r'priced? its IPO|direct listing|SPAC merger',
+    __import__('re').IGNORECASE
+)
+
+@app.get("/api/ipo-events")
+def get_ipo_events():
+    """
+    Return IPO milestone articles (filings, pricings, trading start dates).
+    Strictly filters for actual IPO events, not general coverage.
+    """
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, title, link, source, published_at, entities, current_facts
+                FROM articles
+                WHERE (
+                    title LIKE '%IPO%'
+                    OR title LIKE '%S-1%'
+                    OR title LIKE '%going public%'
+                    OR title LIKE '%initial public offering%'
+                    OR title LIKE '%direct listing%'
+                )
+                AND published_at >= datetime('now', '-30 days')
+                ORDER BY published_at DESC
+                LIMIT 40
+            ''')
+            rows = cursor.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    events = []
+    for row in rows:
+        d = dict(row)
+        title = d.get('title', '')
+        if not _IPO_TITLE_RE.search(title):
+            continue
+
+        entities = []
+        try:
+            entities = json.loads(d['entities']) if d.get('entities') else []
+        except Exception:
+            pass
+
+        facts = []
+        try:
+            facts = json.loads(d['current_facts']) if d.get('current_facts') else []
+        except Exception:
+            pass
+
+        # Determine stage from title
+        tl = title.lower()
+        if 's-1' in tl or 'files for ipo' in tl or 'files to raise' in tl or ('file' in tl and 'ipo' in tl):
+            stage = 'Filed S-1'
+        elif 'pric' in tl and 'ipo' in tl:
+            stage = 'Priced'
+        elif 'begin' in tl and 'trading' in tl:
+            stage = 'Trading'
+        elif any(w in tl for w in ('scheduled', 'plans ipo', 'eyes ipo', 'mulls ipo', 'ipo date', 'set to list', 'set for ipo')):
+            stage = 'Scheduled'
+        elif 'going public' in tl or 'initial public offering' in tl:
+            stage = 'Going Public'
+        elif 'ipo' in tl and any(w in tl for w in ('biggest', 'jumps', 'surges', 'raises', 'touting', 'frenzy', 'investor')):
+            stage = 'Active'
+        elif 'vesting' in tl or 'employee shares' in tl:
+            stage = 'Pre-IPO'
+        else:
+            stage = 'Pipeline'
+
+        events.append({
+            'id':           d['id'],
+            'title':        title,
+            'link':         d.get('link', ''),
+            'source':       d.get('source', ''),
+            'published_at': d.get('published_at', ''),
+            'entities':     entities[:3],
+            'stage':        stage,
+            'top_fact':     facts[0] if facts else None,
+        })
+
+    return events[:10]
+
+
+# ---------------------------------------------------------------------------
+# Static frontend (production / Docker only — skipped in dev)
+# ---------------------------------------------------------------------------
+
+_DIST = Path(__file__).parent / "dist"
+if _DIST.exists():
+    app.mount("/", StaticFiles(directory=str(_DIST), html=True), name="frontend")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -559,7 +729,6 @@ if __name__ == "__main__":
     uvicorn.run(
         module_path,
         host="0.0.0.0",
-        port=8001,
-        reload=True,
-        reload_excludes=[".venv*", "chroma_db*", "*.db", "*.db-journal", "__pycache__*"],
+        port=int(os.getenv("PORT", 8001)),
+        reload=False,
     )

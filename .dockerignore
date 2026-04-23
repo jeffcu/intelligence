@@ -1,0 +1,14 @@
+.venv
+venv
+node_modules
+dist
+__pycache__
+*.pyc
+*.pyo
+chroma_db
+intelligence.db
+scheduler.pid
+*.log
+.env.local
+.env.*.local
+.claude

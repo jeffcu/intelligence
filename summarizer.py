@@ -30,7 +30,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 load_dotenv()
 API_KEY  = os.getenv("GEMINI_API_KEY")
-DB_PATH  = Path(__file__).parent / "intelligence.db"
+DB_PATH  = Path(os.getenv("DB_PATH", str(Path(__file__).parent / "intelligence.db")))
 MODEL    = "gemini-2.5-flash"
 
 COST_INPUT  = 0.000000075   # $ per input token
