@@ -158,6 +158,20 @@ const BriefingCard = ({ b, isExpanded, onToggle }) => {
 // SummaryCard — AI digest card for one ticker or topic
 // ---------------------------------------------------------------------------
 
+// Parse **highlighted** phrases from AI-generated paragraph text.
+// Splits on **...** markers and returns an array of React nodes.
+// Sentences without markers render as plain text (graceful for old summaries).
+const renderHighlighted = (text) => {
+    if (!text) return null;
+    const parts = text.split(/\*\*(.+?)\*\*/g);
+    if (parts.length === 1) return text; // no markers — plain text
+    return parts.map((part, i) =>
+        i % 2 === 1
+            ? <mark key={i} className="summary-hl">{part}</mark>
+            : part
+    );
+};
+
 const SENTIMENT_COLORS = {
     'Positive': '#05c46b',
     'Negative': '#ff6b6b',
@@ -165,19 +179,15 @@ const SENTIMENT_COLORS = {
     'Mixed':    '#feca57',
 };
 
-const SummaryCard = ({ summary, factsFirst }) => {
-    const [expanded, setExpanded] = useState(false);
+const SummaryCard = ({ summary }) => {
+    const [factsOpen, setFactsOpen] = useState(false);
     const sentColor = SENTIMENT_COLORS[summary.sentiment] || '#888';
     const isTicker  = !summary.target_type || summary.target_type === 'Ticker';
     const hasFacts  = summary.key_facts && summary.key_facts.length > 0;
 
-    const cardTitle = hasFacts
-        ? truncate(summary.key_facts[0], 90)
-        : truncate(summary.paragraph, 90);
-
     return (
         <div className={`summary-card ${summary.has_material_events ? 'summary-card--material' : ''}`}>
-            <div className="summary-header" onClick={() => setExpanded(e => !e)}>
+            <div className="summary-header">
                 <span className={`summary-label ${isTicker ? 'summary-label--ticker' : 'summary-label--topic'}`}>
                     {summary.target_value}
                 </span>
@@ -191,37 +201,19 @@ const SummaryCard = ({ summary, factsFirst }) => {
                     {summary.article_count} article{summary.article_count !== 1 ? 's' : ''}
                     &nbsp;·&nbsp;{relativeTime(summary.generated_at)}
                 </span>
-                <span className="summary-chevron">{expanded ? '▼' : '▶'}</span>
             </div>
 
-            <p className="summary-card-title">{cardTitle}</p>
+            <p className="summary-paragraph">{renderHighlighted(summary.paragraph)}</p>
 
-            {factsFirst ? (
-                <>
-                    {hasFacts && (
-                        <div className="summary-facts-wrap">
-                            <span className="summary-facts-label">Key Facts</span>
-                            <ul className="summary-facts">
-                                {summary.key_facts.map((f, i) => <li key={i}>{f}</li>)}
-                            </ul>
-                        </div>
-                    )}
-                    {expanded && (
-                        <p className="summary-paragraph summary-paragraph--below">{summary.paragraph}</p>
-                    )}
-                </>
-            ) : (
-                <>
-                    <p className="summary-paragraph">{summary.paragraph}</p>
-                    {expanded && hasFacts && (
-                        <div className="summary-facts-wrap">
-                            <span className="summary-facts-label">Key Facts</span>
-                            <ul className="summary-facts">
-                                {summary.key_facts.map((f, i) => <li key={i}>{f}</li>)}
-                            </ul>
-                        </div>
-                    )}
-                </>
+            {hasFacts && (
+                <button className="summary-facts-toggle" onClick={() => setFactsOpen(o => !o)}>
+                    {factsOpen ? '▼' : '▶'} Key facts ({summary.key_facts.length})
+                </button>
+            )}
+            {factsOpen && hasFacts && (
+                <ul className="summary-facts">
+                    {summary.key_facts.map((f, i) => <li key={i}>{f}</li>)}
+                </ul>
             )}
         </div>
     );
@@ -605,7 +597,6 @@ const ThemeMixView = ({ articles }) => {
 
     return (
         <div className="theme-mix">
-            <h3 className="analytics-section-title">News Mix by Theme</h3>
             <p className="analytics-section-desc">
                 AI-extracted macro themes across the last {articles.length} articles — derived from Gemini entity/theme tagging.
             </p>
@@ -625,7 +616,29 @@ const ThemeMixView = ({ articles }) => {
 };
 
 // ---------------------------------------------------------------------------
-// SourceAnalyticsView
+// SourceFiltersView — enable/disable source toggles
+// ---------------------------------------------------------------------------
+
+const SourceFiltersView = ({ sources, onToggleSource }) => {
+    if (sources.length === 0) return <p className="analytics-empty">No sources configured.</p>;
+    return (
+        <div className="source-filters-grid">
+            {[...sources].sort((a, b) => a.source_name.localeCompare(b.source_name)).map(s => (
+                <button
+                    key={s.source_name}
+                    className={`source-filter-chip ${s.is_active ? 'source-filter-chip--active' : 'source-filter-chip--inactive'}`}
+                    onClick={() => onToggleSource(s.source_name)}
+                >
+                    <span className="source-filter-dot" style={{ background: s.is_active ? '#05c46b' : '#444' }} />
+                    {s.source_name}
+                </button>
+            ))}
+        </div>
+    );
+};
+
+// ---------------------------------------------------------------------------
+// SourceAnalyticsView — performance table
 // ---------------------------------------------------------------------------
 
 const SourceAnalyticsView = ({ sources, onToggleSource }) => {
@@ -643,7 +656,6 @@ const SourceAnalyticsView = ({ sources, onToggleSource }) => {
 
     return (
         <div className="source-analytics">
-            <h3 className="analytics-section-title">Source Signal Quality</h3>
             <p className="analytics-section-desc">
                 Ranked by pass rate — share of ingested articles that cleared quality gates and reached the feed.
                 Low pass rate means high duplication or irrelevance. High hype score means sensationalist writing.
@@ -706,10 +718,21 @@ const GRAPH_MODES = [
 ];
 
 const GraphView = ({ articles, targets }) => {
-    const fgRef     = useRef();
+    const fgRef      = useRef();
+    const zoomRef    = useRef(1);   // current zoom level, updated by onZoom
     const [graphMode,  setGraphMode]  = useState('focus-themes');
     const [drillNode,  setDrillNode]  = useState(null);   // zoomed/dimmed state
     const [popupNode,  setPopupNode]  = useState(null);   // article popup
+
+    const handleZoomIn  = useCallback(() => {
+        const next = Math.min(zoomRef.current * 1.5, 12);
+        fgRef.current?.zoom(next, 250);
+    }, []);
+
+    const handleZoomOut = useCallback(() => {
+        const next = Math.max(zoomRef.current / 1.5, 0.1);
+        fgRef.current?.zoom(next, 250);
+    }, []);
 
     // Full graph for the active mode
     const fullGraph = useMemo(
@@ -729,6 +752,21 @@ const GraphView = ({ articles, targets }) => {
         });
         return set;
     }, [drillNode, fullGraph]);
+
+    // Spread nodes out whenever the graph data or mode changes
+    useEffect(() => {
+        if (!fgRef.current) return;
+        const timer = setTimeout(() => {
+            const fg = fgRef.current;
+            if (!fg) return;
+            const charge = fg.d3Force('charge');
+            const link   = fg.d3Force('link');
+            if (charge) charge.strength(-320);
+            if (link)   link.distance(110);
+            fg.d3ReheatSimulation();
+        }, 100);
+        return () => clearTimeout(timer);
+    }, [graphMode, fullGraph]);
 
     // Node painter — handles normal, drilled-center, neighbor, and dimmed states
     const paintNode = useCallback((node, ctx, globalScale) => {
@@ -827,6 +865,10 @@ const GraphView = ({ articles, targets }) => {
                         ← Back
                     </button>
                 )}
+                <div className="graph-zoom-controls">
+                    <button className="graph-zoom-btn" onClick={handleZoomIn}  title="Zoom in">+</button>
+                    <button className="graph-zoom-btn" onClick={handleZoomOut} title="Zoom out">−</button>
+                </div>
                 <div className="graph-canvas">
                     {fullGraph?.nodes?.length > 0 ? (
                         <ForceGraph2D
@@ -849,6 +891,7 @@ const GraphView = ({ articles, targets }) => {
                             height={540}
                             backgroundColor="#0d0d0d"
                             onNodeClick={handleNodeClick}
+                            onZoom={({ k }) => { zoomRef.current = k; }}
                         />
                     ) : (
                         <p className="graph-empty">No graph data yet — run the ingestor to populate connections.</p>
@@ -890,13 +933,33 @@ const GraphView = ({ articles, targets }) => {
 // AnalyticsView
 // ---------------------------------------------------------------------------
 
+const AnalyticsSection = ({ title, defaultOpen = true, children }) => {
+    const [open, setOpen] = useState(defaultOpen);
+    return (
+        <div className="analytics-section">
+            <button className="analytics-section-hd" onClick={() => setOpen(o => !o)}>
+                <span className="analytics-section-title">{title}</span>
+                <span className="analytics-section-chevron">{open ? '▼' : '▶'}</span>
+            </button>
+            {open && <div className="analytics-section-body">{children}</div>}
+        </div>
+    );
+};
+
 const AnalyticsView = ({ sources, onToggleSource, articles, targets }) => (
     <div className="analytics-view">
-        <SourceAnalyticsView sources={sources} onToggleSource={onToggleSource} />
-        <div className="analytics-divider" />
-        <ThemeMixView articles={articles} />
-        <div className="analytics-divider" />
-        <GraphView articles={articles} targets={targets} />
+        <AnalyticsSection title="Filters">
+            <SourceFiltersView sources={sources} onToggleSource={onToggleSource} />
+        </AnalyticsSection>
+        <AnalyticsSection title="News Mix by Theme">
+            <ThemeMixView articles={articles} />
+        </AnalyticsSection>
+        <AnalyticsSection title="Knowledge Graph" defaultOpen={false}>
+            <GraphView articles={articles} targets={targets} />
+        </AnalyticsSection>
+        <AnalyticsSection title="Performance by Source" defaultOpen={false}>
+            <SourceAnalyticsView sources={sources} onToggleSource={onToggleSource} />
+        </AnalyticsSection>
     </div>
 );
 
@@ -904,7 +967,7 @@ const AnalyticsView = ({ sources, onToggleSource, articles, targets }) => (
 // FrontPageView — newspaper layout
 // ---------------------------------------------------------------------------
 
-const FrontPageView = ({ portfolioArticles, topicArticles, tickerSummaries, topicSummaries, expandedIds, toggleCard, factsFirst }) => {
+const FrontPageView = ({ portfolioArticles, topicArticles, tickerSummaries, topicSummaries, expandedIds, toggleCard }) => {
     const allArticles = sortArticles([...portfolioArticles, ...topicArticles]);
 
     const sortedTickerSummaries = [...tickerSummaries].sort((a, b) => {
@@ -993,7 +1056,7 @@ const FrontPageView = ({ portfolioArticles, topicArticles, tickerSummaries, topi
                     <h3 className="fp-section-title">Ticker Briefings</h3>
                     <div className="fp-summaries-grid">
                         {sortedTickerSummaries.map(s => (
-                            <SummaryCard key={s.target_value} summary={s} factsFirst={factsFirst} />
+                            <SummaryCard key={s.target_value} summary={s} />
                         ))}
                     </div>
                 </section>
@@ -1005,7 +1068,7 @@ const FrontPageView = ({ portfolioArticles, topicArticles, tickerSummaries, topi
                     <h3 className="fp-section-title">Topic Briefings</h3>
                     <div className="fp-summaries-grid">
                         {sortedTopicSummaries.map(s => (
-                            <SummaryCard key={s.target_value} summary={s} factsFirst={factsFirst} />
+                            <SummaryCard key={s.target_value} summary={s} />
                         ))}
                     </div>
                 </section>
@@ -1072,7 +1135,6 @@ const NewsView = () => {
 
     const [targetsOpen, setTargetsOpen] = useState(true);
     const [viewMode,    setViewMode]    = useState('front-page');
-    const [factsFirst,  setFactsFirst]  = useState(() => localStorage.getItem('intel_factsFirst') === 'true');
 
     const [portSummariesOpen,  setPortSummariesOpen]  = useState(true);
     const [portArticlesOpen,   setPortArticlesOpen]   = useState(false);
@@ -1201,18 +1263,6 @@ const NewsView = () => {
                     </nav>
                 </div>
                 <div className="header-controls">
-                    <div className="format-toggle" title="Switch between bullets and narrative">
-                        <button
-                            className={`format-toggle-opt ${factsFirst ? 'format-toggle-opt--active' : ''}`}
-                            onClick={() => { setFactsFirst(true); localStorage.setItem('intel_factsFirst', 'true'); }}
-                            title="Bullets first"
-                        >≡</button>
-                        <button
-                            className={`format-toggle-opt ${!factsFirst ? 'format-toggle-opt--active' : ''}`}
-                            onClick={() => { setFactsFirst(false); localStorage.setItem('intel_factsFirst', 'false'); }}
-                            title="Narrative first"
-                        >¶</button>
-                    </div>
                 </div>
             </div>
 
@@ -1267,7 +1317,6 @@ const NewsView = () => {
                     topicSummaries={topicSummaries}
                     expandedIds={expandedIds}
                     toggleCard={toggleCard}
-                    factsFirst={factsFirst}
                 />
             ) : (
                 <div className="news-sections">
@@ -1277,7 +1326,7 @@ const NewsView = () => {
                         isEmpty={tickerSummaries.length === 0}
                         emptyMessage="No ticker summaries yet — add tickers above, then run the ingestor."
                     >
-                        {tickerSummaries.map(s => <SummaryCard key={s.target_value} summary={s} factsFirst={factsFirst} />)}
+                        {tickerSummaries.map(s => <SummaryCard key={s.target_value} summary={s} />)}
                     </CollapsibleSection>
 
                     <CollapsibleSection
@@ -1297,7 +1346,7 @@ const NewsView = () => {
                         isEmpty={topicSummaries.length === 0}
                         emptyMessage="No topic summaries yet — briefings generate automatically."
                     >
-                        {topicSummaries.map(s => <SummaryCard key={s.target_value} summary={s} factsFirst={factsFirst} />)}
+                        {topicSummaries.map(s => <SummaryCard key={s.target_value} summary={s} />)}
                     </CollapsibleSection>
 
                     <CollapsibleSection

@@ -1,8 +1,6 @@
 services:
   intelligence:
-    image: yourdockerhub/intelligence:latest   # swap in your Docker Hub image once pushed
-    # build: .                                 # uncomment this line (and comment the image line)
-    #                                          # if you're running from the source folder instead
+    build: .                     # builds from source in this folder
     container_name: intelligence
     ports:
       - "8001:8001"
@@ -11,6 +9,12 @@ services:
     env_file:
       - .env                     # put your GEMINI_API_KEY in this file (see README)
     restart: unless-stopped      # auto-restarts if your machine reboots
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 volumes:
   intel-data:

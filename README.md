@@ -18,45 +18,33 @@ The result is a private briefing service tuned to your specific holdings and top
 
 ## Quick Start
 
-**Prerequisites:** Docker Desktop ([docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop))
+**Prerequisites:**
+- [ ] [Docker Desktop](https://www.docker.com/products/docker-desktop) installed **and open** (look for the whale icon in your menu bar)
+- [ ] A free Gemini API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (takes 30 seconds, no credit card)
 
-**1. Get a free Gemini API key**
+**Run the setup script**
 
-Create a key at [aistudio.google.com](https://aistudio.google.com). The free tier (1,500 requests/day) is sufficient for personal use tracking up to 20–30 targets.
-
-**2. Create your key file**
-
-In the folder containing `docker-compose.yml`, create a file named `.env`:
-
-```
-GEMINI_API_KEY=your_key_here
-```
-
-**3. Start the container**
+Clone or download this folder, open a terminal in it, and run:
 
 ```bash
-docker compose up -d
+bash setup.sh
 ```
 
-**4. Open the interface**
+The script checks Docker, creates your `.env` file, prompts for your API key, builds the container, and tells you exactly what to do next. The first build takes 2–4 minutes; after that, starts take 5 seconds.
 
-```
-http://localhost:8001
-```
+**That's it for setup.** After the script finishes:
 
-**5. Add your targets**
+1. Open **http://localhost:8001** in your browser
+2. Click **✎ Edit** in the Tracking panel — add a ticker (`AAPL`, `NVDA`) or topic (`Gold`, `Interest Rates`)
+3. Run your first news fetch:
+   ```bash
+   docker exec intelligence python ingestor.py
+   ```
+4. Articles appear in 1–2 minutes. The scheduler takes over automatically from here.
 
-Click **✎ Edit** in the Tracking panel. Add stock tickers (`AAPL`, `NVDA`) as type **Ticker**, or topics like `Gold`, `Interest Rates`, `Elon Musk` as their respective types. See `config/starter_topics.json` for a curated starting list.
+See `config/starter_topics.json` for a curated list of tickers, topics, and people to follow.
 
-**6. Run your first ingest**
-
-```bash
-docker exec intelligence python ingestor.py
-```
-
-Articles appear after one to two minutes. The scheduler runs automatically from this point.
-
-**7. Stop / restart**
+**Stop / restart**
 
 ```bash
 docker compose down    # stop (your data is preserved)
@@ -201,14 +189,31 @@ Google Gemini API usage is minimal. A typical day of ingestion across 10–15 ta
 
 ## Troubleshooting
 
-**No articles after running the ingestor:**
-Add at least one target in the Tracking panel before running the ingestor. The engine only fetches feeds for targets you have defined.
+**Start here:** `docker logs intelligence` shows everything happening inside the container — startup messages, API calls, errors. Always check this first.
 
-**API offline banner:**
-The container may not have started. Run `docker compose logs` to see what happened.
+**"Cannot connect to Docker daemon" or "command not found: docker"**
+Docker Desktop is not running. Open it from your Applications folder, wait for the whale icon in the menu bar to stop animating, then try again.
 
-**Summaries are stale:**
+**"This site can't be reached" at localhost:8001**
+The container may not have started. Run `docker compose logs` to see why. Common cause: another program is already using port 8001. Check with `lsof -i :8001`.
+
+**No articles after running the ingestor**
+You need at least one target before the ingestor has anything to fetch. Open the app, click **✎ Edit** in the Tracking panel, add a ticker or topic, then run `docker exec intelligence python ingestor.py` again.
+
+**"GEMINI_API_KEY is not set" in the logs**
+Your `.env` file is missing or the key is still the placeholder. Check the file contains `GEMINI_API_KEY=AIza...` (your real key). Then restart: `docker compose restart`.
+
+**Verify everything is working**
+```bash
+curl http://localhost:8001/health
+```
+Returns `{"status":"ok","api_key":"configured","db":"exists"}` when fully operational.
+
+**Summaries are stale**
 Force a refresh: `docker exec intelligence python summarizer.py`
 
-**Earnings Calendar empty:**
+**Earnings Calendar empty**
 Requires at least one Ticker-type target. The calendar pulls live data from Yahoo Finance on each page load.
+
+**Container keeps crashing**
+`docker logs intelligence` will show the error. The most common cause after initial setup is a missing or invalid API key.

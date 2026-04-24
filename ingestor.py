@@ -572,7 +572,13 @@ def main():
     keywords_map    = load_target_keywords_map(cursor)
 
     if not active_keywords:
-        logging.warning("⚠️  No target keywords configured. Add keywords to your targets before ingesting.")
+        logging.warning("=" * 60)
+        logging.warning("⚠️  NO TRACKING TARGETS CONFIGURED — nothing to fetch.")
+        logging.warning("   Open http://localhost:8001 in your browser.")
+        logging.warning("   Click 'Edit' in the Tracking panel.")
+        logging.warning("   Add a ticker (e.g. AAPL) or topic (e.g. Gold).")
+        logging.warning("   Then re-run: docker exec intelligence python ingestor.py")
+        logging.warning("=" * 60)
         conn.close()
         return
 

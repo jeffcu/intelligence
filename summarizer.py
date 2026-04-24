@@ -50,7 +50,23 @@ class Briefing(BaseModel):
             "'Partnership with Amazon for $500B announced.', 'Analysts raising price targets.'. "
             "Conjecture gets a natural qualifier: 'expected', 'analysts project', 'anticipated'. "
             "No flowery investor language, no 'it is worth noting', no lengthy preamble. "
-            "If nothing material happened, say so in one short sentence."
+            "If nothing material happened, say so in one short sentence. "
+            "CRITICAL FORMATTING RULE: Within each sentence, wrap the core signal phrase "
+            "in **double asterisks**. Exactly one highlight per sentence. "
+            "The highlight MUST follow these actor rules: "
+            "(1) PERSONNEL — always include the person's name AND the change: "
+            "'**Tim Cook steps down as CEO**', '**Jane Smith joins board**', '**CFO John Lee resigns**'. "
+            "Never highlight just the role or just the action without the name. "
+            "(2) PARTNERSHIPS / DEALS / INVESTMENTS — always include both parties AND the action: "
+            "'**OpenAI partners with Amazon**', '**Oppenheimer acquires Nvidia position**', "
+            "'**Apple acquires Beats for $3B**', '**SoftBank invests $500M in OpenAI**'. "
+            "Never highlight only one party or only the dollar amount. "
+            "(3) FINANCIAL RESULTS / ANALYST ACTIONS — include the actor and the key number: "
+            "'**Goldman raises price target to $210**', '**Earnings beat by $0.12**', "
+            "'**Revenue missed by 4%**'. "
+            "(4) MACRO / PRODUCT / REGULATORY — highlight the subject and action together: "
+            "'**Fed holds rates steady**', '**TPU v5 launches in Q3**', '**SEC approves Bitcoin ETF**'. "
+            "The ** markers must appear literally in the output string."
         )
     )
     sentiment: str = Field(
@@ -269,6 +285,7 @@ Rules:
 - Do NOT start with the company name or ticker symbol as the opening word.
 - No "it is worth noting", no formal investor-ese.
 - If nothing material happened: "Nothing significant today — analyst sentiment broadly steady."
+- HIGHLIGHT RULE: Wrap the core signal in **double asterisks** — one per sentence, no exceptions. Always include the actor WITH the action: personnel → "**Tim Cook steps down as CEO**" not "**steps down as CEO**"; deals/partnerships → "**OpenAI partners with Amazon**" not "**partnership with Amazon**"; analyst moves → "**Goldman raises target to $210**"; macro/product → "**Fed holds rates steady**". The ** must appear literally in the string.
 """
 
     t0 = time.time()
@@ -332,6 +349,7 @@ Rules:
 - Do NOT start with the topic name as the opening word.
 - No "it is worth noting", no formal investor-ese.
 - If nothing material happened: "Quiet day for {topic} — no major developments."
+- HIGHLIGHT RULE: Wrap the core signal in **double asterisks** — one per sentence, no exceptions. Always include the actor WITH the action: personnel → "**Tim Cook steps down as CEO**" not "**steps down as CEO**"; deals/partnerships → "**OpenAI partners with Amazon**" not "**partnership with Amazon**"; analyst moves → "**Goldman raises target to $210**"; macro/product → "**Fed holds rates steady**". The ** must appear literally in the string.
 """
 
     t0 = time.time()

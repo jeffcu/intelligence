@@ -520,43 +520,41 @@
     margin-left: auto;
 }
 
-.summary-chevron {
-    font-size: 0.6em;
-    color: #555;
-}
-
-.summary-card-title {
-    margin: 0 0 0.55rem;
-    font-size: 0.92em;
-    font-weight: 600;
-    color: #ddd;
-    line-height: 1.35;
-}
-
 .summary-paragraph {
-    margin: 0;
+    margin: 0.55rem 0 0;
     font-size: 0.88em;
     color: #bbb;
-    line-height: 1.65;
+    line-height: 1.75;
 }
 
-.summary-facts-wrap {
-    margin-top: 0.6rem;
-    padding-top: 0.6rem;
-    border-top: 1px solid #222;
+.summary-hl {
+    background: none;
+    color: #e8e8e8;
+    font-weight: 600;
+    border-bottom: 1.5px solid rgba(226, 178, 84, 0.55);
+    padding-bottom: 0.05em;
 }
 
-.summary-facts-label {
-    font-size: 0.68em;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: #555;
-    display: block;
-    margin-bottom: 0.35rem;
+.summary-facts-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+    margin-top: 0.65rem;
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.75em;
+    color: #666;
+    letter-spacing: 0.3px;
+    transition: color 0.15s;
+}
+.summary-facts-toggle:hover {
+    color: var(--gold-accent);
 }
 
 .summary-facts {
-    margin: 0;
+    margin: 0.4rem 0 0;
     padding-left: 1.1rem;
     font-size: 0.82em;
     color: #999;
@@ -1244,26 +1242,53 @@
     gap: 0;
 }
 
-.analytics-divider {
-    height: 1px;
-    background: var(--border-color);
-    margin: 2.5rem 0;
-}
-
 .analytics-empty {
     color: #666;
     font-style: italic;
+    padding: 0.75rem 0;
+}
+
+/* Collapsible analytics section */
+.analytics-section {
+    border-bottom: 1px solid var(--border-color);
+}
+.analytics-section:last-child {
+    border-bottom: none;
+}
+
+.analytics-section-hd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
     padding: 1rem 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    gap: 0.5rem;
+}
+.analytics-section-hd:hover .analytics-section-title {
+    color: var(--gold-accent, #E2B254);
 }
 
 .analytics-section-title {
-    margin: 0 0 0.4rem;
-    font-size: 1rem;
+    font-size: 0.8rem;
     font-weight: 600;
     color: var(--text-primary, #eee);
-    letter-spacing: 0.03em;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
-    font-size: 0.8rem;
+    margin: 0;
+}
+
+.analytics-section-chevron {
+    font-size: 0.6em;
+    color: #555;
+    flex-shrink: 0;
+}
+
+.analytics-section-body {
+    padding-bottom: 2rem;
 }
 
 .analytics-section-desc {
@@ -1272,6 +1297,45 @@
     color: #666;
     max-width: 780px;
     line-height: 1.5;
+}
+
+/* ── Source Filter Chips ── */
+
+.source-filters-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.source-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid #333;
+    background: #1a1a1a;
+    font-size: 0.78rem;
+    cursor: pointer;
+    color: #bbb;
+    transition: border-color 0.15s, color 0.15s;
+}
+.source-filter-chip:hover {
+    border-color: #555;
+    color: #eee;
+}
+.source-filter-chip--active {
+    border-color: #2a3a2a;
+    color: #ccc;
+}
+.source-filter-chip--inactive {
+    opacity: 0.45;
+}
+.source-filter-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
 }
 
 /* ── Source Table ── */
@@ -1442,6 +1506,46 @@
 .graph-back-btn:hover {
     background: rgba(40, 40, 40, 0.95);
     border-color: var(--gold-accent, #e2b254);
+}
+
+.graph-zoom-controls {
+    position: absolute;
+    bottom: 14px;
+    right: 14px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.graph-zoom-btn {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(20, 20, 20, 0.88);
+    color: #ccc;
+    border: 1px solid #333;
+    border-radius: 6px;
+    font-size: 1.35rem;
+    line-height: 1;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    user-select: none;
+}
+
+.graph-zoom-btn:hover {
+    background: rgba(50, 50, 50, 0.95);
+    color: #fff;
+    border-color: #555;
+}
+
+.graph-zoom-btn:active {
+    background: rgba(226, 178, 84, 0.15);
+    border-color: var(--gold-accent, #e2b254);
+    color: var(--gold-accent, #e2b254);
 }
 
 .graph-canvas {

@@ -77,6 +77,13 @@ def ensure_schema():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_schema()
+    key = os.getenv("GEMINI_API_KEY", "")
+    if not key or key == "your_gemini_api_key_here":
+        print("⚠️  GEMINI_API_KEY is not set — AI analysis and briefings will not work.")
+        print("   Edit your .env file and add: GEMINI_API_KEY=your_real_key_here")
+    else:
+        print(f"✓ Gemini API key configured ({key[:8]}…)")
+    print(f"✓ Database: {DB_PATH}")
     yield
 
 
@@ -93,6 +100,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Health check
+# ---------------------------------------------------------------------------
+
+@app.get("/health")
+async def health():
+    """Used by setup scripts and docker-compose healthcheck."""
+    key = os.getenv("GEMINI_API_KEY", "")
+    key_ok = bool(key and key != "your_gemini_api_key_here")
+    db_ok  = DB_PATH.exists()
+    return {
+        "status":  "ok" if (key_ok and db_ok) else "degraded",
+        "api_key": "configured" if key_ok else "MISSING — set GEMINI_API_KEY in .env",
+        "db":      "exists" if db_ok else "not yet created (run first ingest)",
+    }
 
 
 # ---------------------------------------------------------------------------
