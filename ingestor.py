@@ -166,41 +166,44 @@ def init_db():
         VALUES (?, ?, ?, ?)
     ''', default_sources)
 
-    # --- Seed default target locks ---
-    default_targets = [
-        ('Macro',   'Gold'),
-        ('Macro',   'Bitcoin'),
-        ('Macro',   'Wall Street'),
-        ('Macro',   'World Events'),
-        ('Person',  'Donald Trump'),
-        ('Company', 'Private Companies'),
-    ]
-    cursor.executemany('''
-        INSERT OR IGNORE INTO target_locks (target_type, target_value)
-        VALUES (?, ?)
-    ''', default_targets)
+    # --- Seed default target locks (first run only) ---
+    # Only seeds when the table is completely empty so that manually-deleted
+    # targets are never resurrected by a subsequent ingestor run.
+    cursor.execute("SELECT COUNT(*) FROM target_locks")
+    if cursor.fetchone()[0] == 0:
+        default_targets = [
+            ('Macro',   'Gold'),
+            ('Macro',   'Bitcoin'),
+            ('Macro',   'Wall Street'),
+            ('Macro',   'World Events'),
+            ('Person',  'Donald Trump'),
+            ('Company', 'Private Companies'),
+        ]
+        cursor.executemany('''
+            INSERT OR IGNORE INTO target_locks (target_type, target_value)
+            VALUES (?, ?)
+        ''', default_targets)
 
-    # --- Seed default keyword expansions ---
-    default_keywords = {
-        'Gold':              ['gold', 'gold price', 'xau', 'precious metals', 'bullion'],
-        'Bitcoin':           ['bitcoin', 'btc', 'crypto', 'cryptocurrency', 'blockchain', 'digital assets'],
-        'Wall Street':       ['wall street', 's&p 500', 'sp500', 'dow jones', 'nasdaq', 'stock market',
-                              'federal reserve', 'fed', 'equity market', 'interest rate'],
-        'World Events':      ['geopolitical', 'war', 'conflict', 'sanctions', 'tariff', 'trade war',
-                              'recession', 'inflation', 'gdp'],
-        'Donald Trump':      ['trump', 'donald trump', 'white house', 'executive order', 'maga'],
-        'Private Companies': ['private equity', 'ipo', 'venture capital', 'startup', 'unicorn'],
-    }
-    for target_value, keywords in default_keywords.items():
-        cursor.execute("SELECT id FROM target_locks WHERE target_value = ?", (target_value,))
-        row = cursor.fetchone()
-        if row:
-            target_id = row['id']
-            for kw in keywords:
-                cursor.execute('''
-                    INSERT OR IGNORE INTO target_keywords (target_lock_id, keyword)
-                    VALUES (?, ?)
-                ''', (target_id, kw))
+        default_keywords = {
+            'Gold':              ['gold', 'gold price', 'xau', 'precious metals', 'bullion'],
+            'Bitcoin':           ['bitcoin', 'btc', 'crypto', 'cryptocurrency', 'blockchain', 'digital assets'],
+            'Wall Street':       ['wall street', 's&p 500', 'sp500', 'dow jones', 'nasdaq', 'stock market',
+                                  'federal reserve', 'fed', 'equity market', 'interest rate'],
+            'World Events':      ['geopolitical', 'war', 'conflict', 'sanctions', 'tariff', 'trade war',
+                                  'recession', 'inflation', 'gdp'],
+            'Donald Trump':      ['trump', 'donald trump', 'white house', 'executive order', 'maga'],
+            'Private Companies': ['private equity', 'ipo', 'venture capital', 'startup', 'unicorn'],
+        }
+        for target_value, keywords in default_keywords.items():
+            cursor.execute("SELECT id FROM target_locks WHERE target_value = ?", (target_value,))
+            row = cursor.fetchone()
+            if row:
+                target_id = row['id']
+                for kw in keywords:
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO target_keywords (target_lock_id, keyword)
+                        VALUES (?, ?)
+                    ''', (target_id, kw))
 
     # --- Schema evolution (safe ALTER TABLE for existing DBs) ---
     safe_alters = [

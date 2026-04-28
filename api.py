@@ -731,6 +731,35 @@ def get_ipo_events():
     return events[:10]
 
 
+@app.get("/api/schedule/status")
+def get_schedule_status():
+    """Return timestamp of last news ingest and ISO time of next scheduled ingest."""
+    from datetime import datetime, timedelta
+
+    last_ingest = None
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT MAX(timestamp) as latest FROM ai_usage_logs")
+            row = cursor.fetchone()
+            if row and row['latest']:
+                last_ingest = row['latest']
+    except Exception:
+        pass
+
+    # Ingest slots: 7:00, 12:00, 15:00 local time, every day
+    ingest_times = [(7, 0), (12, 0), (15, 0)]
+    now = datetime.now()
+    candidates = []
+    for hour, minute in ingest_times:
+        target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if target <= now:
+            target += timedelta(days=1)
+        candidates.append(target)
+
+    return {"last_ingest": last_ingest, "next_ingest": min(candidates).isoformat()}
+
+
 # ---------------------------------------------------------------------------
 # Static frontend (production / Docker only — skipped in dev)
 # ---------------------------------------------------------------------------

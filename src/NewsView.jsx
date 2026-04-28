@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import './NewsView.css';
 
-// Relative URLs — works in Vite dev (proxied) and Docker production (same origin)
-const INTELLIGENCE_API = '';
+// Empty string = relative URLs (Intelligence standalone via Vite proxy or Docker same-origin).
+// Set VITE_INTEL_API=http://localhost:8001 in a host app's .env to call Intelligence cross-origin.
+const INTELLIGENCE_API = import.meta.env.VITE_INTEL_API ?? '';
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
@@ -23,6 +24,23 @@ function relativeTime(isoString) {
 
 function isOld(isoString) {
     return Date.now() - new Date(isoString).getTime() > ONE_DAY_MS;
+}
+
+function fmtAgo(iso) {
+    if (!iso) return 'never';
+    const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60), r = m % 60;
+    return r ? `${h}h ${r}m ago` : `${h}h ago`;
+}
+
+function fmtCountdown(iso) {
+    const m = Math.ceil((new Date(iso).getTime() - Date.now()) / 60000);
+    if (m <= 0) return 'soon';
+    if (m < 60) return `in ${m}m`;
+    const h = Math.floor(m / 60), r = m % 60;
+    return r ? `in ${h}h ${r}m` : `in ${h}h`;
 }
 
 function sortArticles(articles) {
@@ -220,12 +238,66 @@ const SummaryCard = ({ summary }) => {
 };
 
 // ---------------------------------------------------------------------------
+// SummaryCardExp — time-ordered bullet variant for Newspaper (exp)
+// ---------------------------------------------------------------------------
+
+const SummaryCardExp = ({ summary, articles }) => {
+    const sentColor = SENTIMENT_COLORS[summary.sentiment] || '#888';
+    const isTicker  = !summary.target_type || summary.target_type === 'Ticker';
+
+    const matched = articles
+        .filter(a => (a.matched_targets || []).some(
+            t => t.toLowerCase() === summary.target_value.toLowerCase()
+        ))
+        .sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+
+    return (
+        <div className={`summary-card summary-card--exp ${summary.has_material_events ? 'summary-card--material' : ''}`}>
+            <div className="summary-header">
+                <span className={`summary-label ${isTicker ? 'summary-label--ticker' : 'summary-label--topic'}`}>
+                    {summary.target_value}
+                </span>
+                <span className="summary-sentiment" style={{ color: sentColor }}>
+                    {summary.sentiment}
+                </span>
+                {summary.has_material_events && (
+                    <span className="summary-material-badge">Material</span>
+                )}
+                <span className="summary-meta">
+                    {matched.length} article{matched.length !== 1 ? 's' : ''}
+                </span>
+            </div>
+
+            {matched.length > 0 ? (
+                <ul className="summary-exp-bullets">
+                    {matched.map(a => (
+                        <li key={a.id} className="summary-exp-bullet">
+                            <a
+                                className="summary-exp-text"
+                                href={a.link}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                {a.dehyped_summary || a.title}
+                            </a>
+                            <span className="summary-exp-time">{relativeTime(a.published_at)}</span>
+                        </li>
+                    ))}
+                </ul>
+            ) : (
+                <p className="summary-exp-empty">No recent articles.</p>
+            )}
+        </div>
+    );
+};
+
+// ---------------------------------------------------------------------------
 // TargetsPanel — tracked tickers + topic chips + inline editor
 // ---------------------------------------------------------------------------
 
 const TARGET_TYPES = ['Ticker', 'Company', 'Topic', 'Macro', 'Person', 'Sector'];
 
-const TargetsPanel = ({ targets, onRefresh }) => {
+const TargetsPanel = ({ targets, onRefresh, onTargetDeleted }) => {
     const [editMode,   setEditMode]   = useState(false);
     const [newType,    setNewType]    = useState('Ticker');
     const [newValue,   setNewValue]   = useState('');
@@ -270,8 +342,10 @@ const TargetsPanel = ({ targets, onRefresh }) => {
 
     const handleDelete = async (id) => {
         setDeletingId(id);
+        const target = targets.find(t => t.id === id);
         try {
             await fetch(`${INTELLIGENCE_API}/api/targets/${id}`, { method: 'DELETE' });
+            if (target) onTargetDeleted(target.target_value);
             onRefresh();
         } finally {
             setDeletingId(null);
@@ -964,10 +1038,10 @@ const AnalyticsView = ({ sources, onToggleSource, articles, targets }) => (
 );
 
 // ---------------------------------------------------------------------------
-// FrontPageView — newspaper layout
+// FrontPageView — newspaper layout with time-ordered bullet summaries
 // ---------------------------------------------------------------------------
 
-const FrontPageView = ({ portfolioArticles, topicArticles, tickerSummaries, topicSummaries, expandedIds, toggleCard }) => {
+const FrontPageView = ({ portfolioArticles, topicArticles, tickerSummaries, topicSummaries, allBriefings, expandedIds, toggleCard }) => {
     const allArticles = sortArticles([...portfolioArticles, ...topicArticles]);
 
     const sortedTickerSummaries = [...tickerSummaries].sort((a, b) => {
@@ -1056,7 +1130,7 @@ const FrontPageView = ({ portfolioArticles, topicArticles, tickerSummaries, topi
                     <h3 className="fp-section-title">Ticker Briefings</h3>
                     <div className="fp-summaries-grid">
                         {sortedTickerSummaries.map(s => (
-                            <SummaryCard key={s.target_value} summary={s} />
+                            <SummaryCardExp key={s.target_value} summary={s} articles={allBriefings} />
                         ))}
                     </div>
                 </section>
@@ -1068,7 +1142,7 @@ const FrontPageView = ({ portfolioArticles, topicArticles, tickerSummaries, topi
                     <h3 className="fp-section-title">Topic Briefings</h3>
                     <div className="fp-summaries-grid">
                         {sortedTopicSummaries.map(s => (
-                            <SummaryCard key={s.target_value} summary={s} />
+                            <SummaryCardExp key={s.target_value} summary={s} articles={allBriefings} />
                         ))}
                     </div>
                 </section>
@@ -1122,6 +1196,13 @@ const FrontPageView = ({ portfolioArticles, topicArticles, tickerSummaries, topi
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
+const DELETED_KEY = 'intel_deleted_targets';
+
+function loadDeleted() {
+    try { return new Set(JSON.parse(sessionStorage.getItem(DELETED_KEY) || '[]')); }
+    catch { return new Set(); }
+}
+
 const NewsView = () => {
     const [briefings,  setBriefings]  = useState([]);
     const [targets,    setTargets]    = useState([]);
@@ -1130,11 +1211,14 @@ const NewsView = () => {
     const [error,      setError]      = useState(null);
     const [expandedIds, setExpandedIds] = useState(new Set());
     const [aiStats,    setAiStats]    = useState(null);
+    const [manuallyDeleted, setManuallyDeleted] = useState(loadDeleted);
 
     const [sources, setSources] = useState([]);
 
-    const [targetsOpen, setTargetsOpen] = useState(true);
-    const [viewMode,    setViewMode]    = useState('front-page');
+    const [targetsOpen,     setTargetsOpen]     = useState(true);
+    const [viewMode,        setViewMode]        = useState('front-page');
+    const [scheduleStatus,  setScheduleStatus]  = useState(null);
+    const [, schedTick] = useState(0);
 
     const [portSummariesOpen,  setPortSummariesOpen]  = useState(true);
     const [portArticlesOpen,   setPortArticlesOpen]   = useState(false);
@@ -1198,16 +1282,61 @@ const NewsView = () => {
         } catch { /* non-fatal */ }
     }, [fetchAnalytics]);
 
+    const fetchScheduleStatus = useCallback(async () => {
+        try {
+            const res = await fetch(`${INTELLIGENCE_API}/api/schedule/status`);
+            if (res.ok) setScheduleStatus(await res.json());
+        } catch { /* non-fatal */ }
+    }, []);
+
+    const handleTargetDeleted = useCallback((value) => {
+        setManuallyDeleted(prev => {
+            const next = new Set(prev);
+            next.add(value.toUpperCase());
+            try { sessionStorage.setItem(DELETED_KEY, JSON.stringify([...next])); } catch { /* non-fatal */ }
+            return next;
+        });
+    }, []);
+
+    // When embedded in Trust, silently sync portfolio tickers into Intelligence targets.
+    // Calls Trust's own /api endpoint (relative URL). No-ops gracefully when running standalone.
+    // Skips tickers the user has manually removed so they don't get re-added on re-mount.
+    const performAutoSync = useCallback(async () => {
+        try {
+            const portRes = await fetch('/api/analysis/portfolio-chart');
+            if (!portRes.ok) return;
+            const portData = await portRes.json();
+            const deleted = loadDeleted();
+            const tickers = portData
+                .filter(d => isEquityTicker(d.id) && !deleted.has(d.id.toUpperCase()))
+                .slice(0, 15)
+                .map(d => d.id);
+            if (tickers.length === 0) return;
+            await fetch(`${INTELLIGENCE_API}/api/targets/sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tickers }),
+            });
+        } catch { /* non-fatal */ }
+    }, []);
+
     useEffect(() => {
+        performAutoSync();
         fetchData();
         fetchAiStats();
         fetchAnalytics();
-    }, [fetchData, fetchAiStats, fetchAnalytics]);
+        fetchScheduleStatus();
+    }, [performAutoSync, fetchData, fetchAiStats, fetchAnalytics, fetchScheduleStatus]);
 
     useEffect(() => {
-        const id = setInterval(() => { fetchData(true); fetchAiStats(); }, REFRESH_INTERVAL_MS);
+        const id = setInterval(() => { fetchData(true); fetchAiStats(); fetchScheduleStatus(); }, REFRESH_INTERVAL_MS);
         return () => clearInterval(id);
-    }, [fetchData, fetchAiStats]);
+    }, [fetchData, fetchAiStats, fetchScheduleStatus]);
+
+    useEffect(() => {
+        const id = setInterval(() => schedTick(n => n + 1), 60_000);
+        return () => clearInterval(id);
+    }, []);
 
     const tickerSet = new Set(
         targets.filter(t => t.target_type === 'Ticker').map(t => t.target_value.toUpperCase())
@@ -1227,14 +1356,14 @@ const NewsView = () => {
 
     const tickerSummaries = Object.values(
         summaries
-            .filter(s => !s.target_type || s.target_type === 'Ticker')
+            .filter(s => (!s.target_type || s.target_type === 'Ticker') && tickerSet.has(s.target_value.toUpperCase()))
             .reduce((acc, s) => {
                 if (!acc[s.target_value] || s.generated_at > acc[s.target_value].generated_at)
                     acc[s.target_value] = s;
                 return acc;
             }, {})
     );
-    const topicSummaries  = summaries.filter(s => s.target_type  && s.target_type !== 'Ticker');
+    const topicSummaries = summaries.filter(s => s.target_type && s.target_type !== 'Ticker' && topicSet.has(s.target_value));
 
     const tickerCount    = targets.filter(t => t.target_type === 'Ticker').length;
     const nonTickerCount = targets.filter(t => t.target_type !== 'Ticker').length;
@@ -1263,6 +1392,13 @@ const NewsView = () => {
                     </nav>
                 </div>
                 <div className="header-controls">
+                    {scheduleStatus && (
+                        <div className="sched-status">
+                            <span>Updated <strong className="sched-ago">{fmtAgo(scheduleStatus.last_ingest)}</strong></span>
+                            <span className="sched-sep">·</span>
+                            <span>Next <strong className="sched-next">{fmtCountdown(scheduleStatus.next_ingest)}</strong></span>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -1291,7 +1427,7 @@ const NewsView = () => {
                         {tickerCount} tickers · {nonTickerCount} topics
                     </span>
                 </div>
-                {targetsOpen && <TargetsPanel targets={targets} onRefresh={fetchData} />}
+                {targetsOpen && <TargetsPanel targets={targets} onRefresh={fetchData} onTargetDeleted={handleTargetDeleted} />}
             </div>
 
             {error && (
@@ -1315,6 +1451,7 @@ const NewsView = () => {
                     topicArticles={topicArticles}
                     tickerSummaries={tickerSummaries}
                     topicSummaries={topicSummaries}
+                    allBriefings={briefings}
                     expandedIds={expandedIds}
                     toggleCard={toggleCard}
                 />
