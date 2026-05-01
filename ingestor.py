@@ -11,11 +11,113 @@ import markdownify
 from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
+
+# ---------------------------------------------------------------------------
+# Publisher resolver — maps article link domains to human-readable publisher names.
+# Source in articles means the publisher of the content, not the RSS channel it
+# was delivered through.
+# ---------------------------------------------------------------------------
+
+DOMAIN_TO_PUBLISHER = {
+    # Financial media
+    'fool.com':                     'Motley Fool',
+    '247wallst.com':                '24/7 Wall St.',
+    'thestreet.com':                'The Street',
+    'seekingalpha.com':             'Seeking Alpha',
+    'marketbeat.com':               'MarketBeat',
+    'barchart.com':                 'Barchart',
+    'bloomberg.com':                'Bloomberg',
+    'cnbc.com':                     'CNBC',
+    'reuters.com':                  'Reuters',
+    'wsj.com':                      'Wall Street Journal',
+    'ft.com':                       'Financial Times',
+    'marketwatch.com':              'MarketWatch',
+    'investing.com':                'Investing.com',
+    'morningstar.com':              'Morningstar',
+    'zacks.com':                    'Zacks',
+    'finance.yahoo.com':            'Yahoo Finance',
+    'barrons.com':                  "Barron's",
+    'kiplinger.com':                'Kiplinger',
+    'investopedia.com':             'Investopedia',
+    'moneymorning.com':             'Money Morning',
+    'trefis.com':                   'Trefis',
+    'qz.com':                       'Quartz',
+    'schaeffersresearch.com':       "Schaeffer's Research",
+    'prnewswire.com':               'PR Newswire',
+    'businesswire.com':             'Business Wire',
+    'globenewswire.com':            'Globe Newswire',
+    # General news
+    'nytimes.com':                  'New York Times',
+    'washingtonpost.com':           'Washington Post',
+    'latimes.com':                  'Los Angeles Times',
+    'usatoday.com':                 'USA Today',
+    'apnews.com':                   'AP News',
+    'axios.com':                    'Axios',
+    'forbes.com':                   'Forbes',
+    'fortune.com':                  'Fortune',
+    'businessinsider.com':          'Business Insider',
+    'economist.com':                'The Economist',
+    'theatlantic.com':              'The Atlantic',
+    'politico.com':                 'Politico',
+    'cnn.com':                      'CNN',
+    'bbc.com':                      'BBC News',
+    'theguardian.com':              'The Guardian',
+    'nypost.com':                   'New York Post',
+    'nbcnews.com':                  'NBC News',
+    'cbsnews.com':                  'CBS News',
+    'abcnews.go.com':               'ABC News',
+    # Tech
+    'techcrunch.com':               'TechCrunch',
+    'wired.com':                    'Wired',
+    'venturebeat.com':              'VentureBeat',
+    'theverge.com':                 'The Verge',
+    'arstechnica.com':              'Ars Technica',
+    'zdnet.com':                    'ZDNet',
+    # International
+    'asia.nikkei.com':              'Nikkei Asia',
+    'nikkei.com':                   'Nikkei Asia',
+    'scmp.com':                     'South China Morning Post',
+    'economictimes.indiatimes.com': 'Economic Times',
+    'thehindubusinessline.com':     'Hindu BusinessLine',
+}
+
+
+def resolve_publisher(link: str, title: str = '') -> str:
+    """Return the human-readable publisher name for an article.
+
+    For Google News redirect URLs the publisher is embedded in the title suffix
+    ('Article headline - Publisher Name'), so we extract it from there.
+    For all other URLs we derive the publisher from the link domain.
+    Unknown domains are cleaned up and title-cased as a best-effort fallback.
+    """
+    try:
+        netloc = urlparse(link).netloc.lower().replace('www.', '')
+    except Exception:
+        return 'Unknown'
+
+    # Google News redirects: publisher is in the title as '... - Publisher Name'
+    if 'news.google.com' in netloc:
+        if title and ' - ' in title:
+            candidate = title.rsplit(' - ', 1)[-1].strip()
+            # Sanity: reject if it looks like a sentence fragment (>50 chars or no capitals)
+            if len(candidate) <= 50 and any(c.isupper() for c in candidate):
+                return candidate
+        return 'Google News'
+
+    if netloc in DOMAIN_TO_PUBLISHER:
+        return DOMAIN_TO_PUBLISHER[netloc]
+
+    # Unknown domain: convert 'market-realist.com' -> 'Market Realist'
+    parts = netloc.split('.')
+    if len(parts) >= 2:
+        return parts[-2].replace('-', ' ').title()
+    return netloc
+
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -672,12 +774,15 @@ def main():
                 if not summary or len(summary) < 10:
                     summary = "No summary provided."
 
+                # Resolve the real publisher now that we have link + title.
+                publisher = resolve_publisher(link, title)
+
                 # ==========================================================
                 # LEVEL 1: DEFLECTOR — keyword relevance gate (zero-cost)
                 # ==========================================================
                 if not is_relevant(title, summary, active_keywords):
                     logging.info(f"🛡️  DEFLECTED: {title[:80]}")
-                    log_source_deflect(cursor, source_name)
+                    log_source_deflect(cursor, publisher)
                     conn.commit()
                     continue
 
@@ -689,7 +794,7 @@ def main():
                     distance = existing['distances'][0][0]
                     if distance < 0.15:
                         logging.info(f"🪓 CHOPPED! Similarity {distance:.2f}. Skipping AI.")
-                        log_source_chop(cursor, source_name)
+                        log_source_chop(cursor, publisher)
                         conn.commit()
                         continue
 
@@ -705,7 +810,7 @@ def main():
                 passed, reason = passes_quality_gate(analysis)
                 if not passed:
                     logging.info(f"🗑️  QUALITY REJECTED ({reason}): {title[:80]}")
-                    log_source_quality_reject(cursor, source_name)
+                    log_source_quality_reject(cursor, publisher)
                     conn.commit()
                     continue
 
@@ -731,18 +836,18 @@ def main():
                         analysis.get('event_type', 'General News'),
                         analysis.get('hype_score', 0),
                         analysis.get('impact_score', 0),
-                        source_name,
+                        publisher,
                         link,
                         published_at,
                         json.dumps(matched),
                     ))
-                    log_source_ingest(cursor, source_name)
+                    log_source_ingest(cursor, publisher)
                     conn.commit()
 
                     doc_id = link if link else title
                     collection.add(
                         documents=[summary],
-                        metadatas=[{"title": title, "source": source_name}],
+                        metadatas=[{"title": title, "source": publisher}],
                         ids=[doc_id]
                     )
                     logging.info(f"✅ Stored. Matched targets: {matched}")
