@@ -470,15 +470,16 @@ def log_source_ingest(cursor, source_name):
 
 def de_hype_article(client, title, summary, cursor, active_targets=None):
     """Call Gemini to extract structured intelligence from a pre-filtered article.
-    Injects active targets as context to bias impact scoring toward portfolio relevance.
+    Injects active targets as SCORING CONTEXT ONLY — they must not contaminate entity extraction.
     """
     target_context = ""
     if active_targets:
         target_values = [t['target_value'] for t in active_targets]
         target_context = (
-            f"\nThe user monitors these portfolio positions and subjects: {', '.join(target_values)}. "
-            f"Factor relevance to these specifically when scoring impact_score — "
-            f"direct relevance to a monitored position should raise the score.\n"
+            f"\nSCORING CONTEXT (do NOT include these in entities unless explicitly named in the article above): "
+            f"The user monitors these positions and subjects: {', '.join(target_values)}. "
+            f"Use this list only to raise the impact_score when the article is directly relevant "
+            f"to one of them. Do not add these terms to the entities output.\n"
         )
 
     prompt = f"""Analyze this financial news article and extract structured intelligence.
@@ -488,7 +489,7 @@ Content: {summary}
 Instructions:
 1. CURRENT FACTS: Extract concrete, verifiable facts happening right now (specific numbers, decisions, actions taken). Be thorough — earnings figures, price targets, analyst ratings, executive changes, and regulatory decisions are all facts.
 2. FUTURE OPINIONS: Separate predictions, analyst forecasts, and speculative commentary.
-3. ENTITIES: Extract company names, ticker symbols, executives, indices, and institutions.
+3. ENTITIES: Extract only company names, ticker symbols, executives, indices, and institutions that are explicitly named in the article text above. Do not infer or add entities from the scoring context list.
 4. MACRO THEMES: Identify broad themes (e.g., Cryptocurrency, Interest Rates, Oil & Gas, Earnings Season, AI).
 5. EVENT TYPE: Classify precisely using the provided categories. Earnings reports, analyst upgrades/downgrades, and price target changes must be classified specifically — do not fall back to 'General News' if a more specific category applies.
 6. IMPACT SCORE: Rate 0-100 based on direct, measurable market consequence. Earnings reports, analyst rating changes, and executive departures for portfolio companies score higher.
@@ -513,7 +514,16 @@ Instructions:
             raw_json = raw_json[7:]
         if raw_json.endswith('```'):
             raw_json = raw_json[:-3]
-        return json.loads(raw_json.strip())
+        result = json.loads(raw_json.strip())
+
+        # Sanity cap: >15 entities almost always means sidebar/widget contamination leaked in.
+        # Keep the first 15 (most prominently mentioned tend to appear first in AI output).
+        entities = result.get('entities', [])
+        if len(entities) > 15:
+            logging.warning(f"Entity count ({len(entities)}) exceeded cap for '{title}' — truncating to 15. Likely page-scrape contamination.")
+            result['entities'] = entities[:15]
+
+        return result
 
     except Exception as e:
         logging.error(f"AI Engine failure for '{title}': {e}")
@@ -534,6 +544,9 @@ Instructions:
 # ---------------------------------------------------------------------------
 
 def fetch_article_text(url):
+    """Fetch article body text, preferring semantic content containers over whole-page conversion.
+    Whole-page fallback is the source of sidebar/widget contamination (market tickers, etc.).
+    """
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -545,9 +558,22 @@ def fetch_article_text(url):
             logging.warning(f"Shields up at {url} (HTTP {response.status_code}).")
             return ""
         soup = BeautifulSoup(response.text, 'html.parser')
-        for element in soup(["script", "style", "nav", "footer", "header", "aside", "noscript"]):
+
+        # Strip noise elements universally before any extraction path.
+        for element in soup(["script", "style", "nav", "footer", "header", "aside",
+                              "noscript", "figure", "iframe", "form"]):
             element.decompose()
-        markdown_text = markdownify.markdownify(str(soup), heading_style="ATX", strip=['a', 'img']).strip()
+
+        # Prefer semantic content containers — avoids sidebars and market data widgets.
+        content_node = (
+            soup.find('article') or
+            soup.find('main') or
+            soup.find(attrs={'role': 'main'}) or
+            soup.find(class_=lambda c: c and any(k in c for k in ('article-body', 'story-body', 'entry-content', 'post-content', 'article-content')))
+        )
+        target = content_node if content_node else soup
+
+        markdown_text = markdownify.markdownify(str(target), heading_style="ATX", strip=['a', 'img']).strip()
         if markdown_text:
             return markdown_text[:4000] + "\n...[TRUNCATED]"
         return "No readable content extracted."
