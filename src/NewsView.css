@@ -1754,15 +1754,55 @@
     gap: 0.55rem;
 }
 
+.summary-exp-bullets--scroll {
+    max-height: 260px;
+    overflow-y: auto;
+    padding-right: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+}
+
+.summary-exp-bullets--scroll::-webkit-scrollbar {
+    width: 4px;
+}
+
+.summary-exp-bullets--scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.summary-exp-bullets--scroll::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 2px;
+}
+
 .summary-exp-bullet {
-    display: block;
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
     line-height: 1.45;
 }
 
+.summary-exp-fresh-dot {
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #05c46b;
+    margin-top: 0.2em;
+    box-shadow: 0 0 5px rgba(5, 196, 107, 0.6);
+}
+
+.summary-exp-bullet--fresh .summary-exp-text {
+    color: #e8e8e8;
+    font-weight: 500;
+}
+
 .summary-exp-text {
-    color: #c8c8c8;
+    color: #909090;
     text-decoration: none;
-    font-size: 0.85rem;
+    font-size: 0.84rem;
+    flex: 1;
+    min-width: 0;
 }
 
 .summary-exp-text:hover {
@@ -1771,10 +1811,15 @@
 }
 
 .summary-exp-time {
-    font-size: 0.7rem;
-    color: #555;
+    font-size: 0.69rem;
+    color: #484848;
     white-space: nowrap;
-    margin-left: 0.4em;
+    flex-shrink: 0;
+}
+
+.summary-exp-time--fresh {
+    color: #05c46b;
+    font-weight: 600;
 }
 
 .summary-exp-empty {

@@ -132,7 +132,13 @@ CHROMA_PATH = Path(os.getenv("CHROMA_PATH", str(Path(__file__).parent / "chroma_
 
 # Pydantic Structural Containment Field
 class ArticleAnalysis(BaseModel):
-    dehyped_summary: str = Field(description="A purely objective, factual 1-2 sentence summary without emotional adjectives.")
+    dehyped_summary: str = Field(description=(
+        "A purely objective, factual 1-2 sentence summary written as a financial analyst briefing a colleague. "
+        "NEVER start with 'The article', 'This article', 'The piece', or any meta-description of the content. "
+        "State the actual companies, tickers, ratings, price targets, figures, and actions directly. "
+        "Bad: 'The article lists several companies subject to analyst calls.' "
+        "Good: 'Goldman Sachs upgraded NVDA to Buy with a $180 target; JPMorgan cut AAPL to Neutral citing margin pressure.'"
+    ))
     current_facts: list[str] = Field(description="List of facts happening right now.")
     future_opinions: list[str] = Field(description="List of predictions, analyst guesses, or hype.")
     entities: list[str] = Field(description="List of extracted key entities, prioritizing major companies and macro indices.")
@@ -589,6 +595,7 @@ Title: {title}
 Content: {summary}
 {target_context}
 Instructions:
+0. SUMMARY: Write dehyped_summary as a financial analyst briefing a colleague — name the actual companies, tickers, ratings, prices, and actions. NEVER begin with "The article", "This article", "The piece", or any phrase that describes the article rather than its content. If the article covers multiple analyst calls, name the most significant ones explicitly.
 1. CURRENT FACTS: Extract concrete, verifiable facts happening right now (specific numbers, decisions, actions taken). Be thorough — earnings figures, price targets, analyst ratings, executive changes, and regulatory decisions are all facts.
 2. FUTURE OPINIONS: Separate predictions, analyst forecasts, and speculative commentary.
 3. ENTITIES: Extract only company names, ticker symbols, executives, indices, and institutions that are explicitly named in the article text above. Do not infer or add entities from the scoring context list.
@@ -624,6 +631,40 @@ Instructions:
         if len(entities) > 15:
             logging.warning(f"Entity count ({len(entities)}) exceeded cap for '{title}' — truncating to 15. Likely page-scrape contamination.")
             result['entities'] = entities[:15]
+
+        # Meta-summary guard: detect descriptions of the article rather than its content.
+        # Re-prompt with a strict one-shot correction rather than falling back to the title.
+        META_PATTERNS = re.compile(
+            r'^(the article|this article|the piece|this piece|the report|this report|'
+            r'the story|this story|the post|this post|the news|the text|the content)',
+            re.IGNORECASE
+        )
+        summary_text = result.get('dehyped_summary', '')
+        if META_PATTERNS.match(summary_text.strip()):
+            logging.warning(f"Meta-summary detected for '{title}' — re-prompting for substance.")
+            repair_prompt = (
+                f"You wrote this summary: \"{summary_text}\"\n"
+                f"That is a meta-description of the article, not its content. Rewrite it in 1-2 sentences "
+                f"as a financial analyst briefing a colleague. Name the actual companies, tickers, ratings, "
+                f"price targets, figures, or actions from the article. Do NOT start with 'The article' or similar.\n\n"
+                f"Original article title: {title}\n"
+                f"Original article content: {summary}"
+            )
+            try:
+                repair_resp = client.models.generate_content(
+                    model=model_name,
+                    contents=repair_prompt,
+                    config=types.GenerateContentConfig(temperature=0.2),
+                )
+                log_ai_usage(cursor, start_time, repair_resp, model_name)
+                repaired = repair_resp.text.strip().strip('"')
+                if repaired and not META_PATTERNS.match(repaired):
+                    result['dehyped_summary'] = repaired
+                    logging.info(f"Summary repaired for '{title}'")
+                else:
+                    logging.warning(f"Repair also returned a meta-summary for '{title}' — keeping original.")
+            except Exception as repair_err:
+                logging.error(f"Summary repair call failed for '{title}': {repair_err}")
 
         return result
 

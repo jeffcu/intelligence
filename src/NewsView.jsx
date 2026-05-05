@@ -241,6 +241,9 @@ const SummaryCard = ({ summary }) => {
 // SummaryCardExp — time-ordered bullet variant for Newspaper (exp)
 // ---------------------------------------------------------------------------
 
+const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+const EXP_VISIBLE_LIMIT = 6;
+
 const SummaryCardExp = ({ summary, articles }) => {
     const sentColor = SENTIMENT_COLORS[summary.sentiment] || '#888';
     const isTicker  = !summary.target_type || summary.target_type === 'Ticker';
@@ -250,6 +253,9 @@ const SummaryCardExp = ({ summary, articles }) => {
             t => t.toLowerCase() === summary.target_value.toLowerCase()
         ))
         .sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+
+    const isFresh = (iso) => Date.now() - new Date(iso).getTime() < THREE_HOURS_MS;
+    const needsScroll = matched.length > EXP_VISIBLE_LIMIT;
 
     return (
         <div className={`summary-card summary-card--exp ${summary.has_material_events ? 'summary-card--material' : ''}`}>
@@ -269,20 +275,26 @@ const SummaryCardExp = ({ summary, articles }) => {
             </div>
 
             {matched.length > 0 ? (
-                <ul className="summary-exp-bullets">
-                    {matched.map(a => (
-                        <li key={a.id} className="summary-exp-bullet">
-                            <a
-                                className="summary-exp-text"
-                                href={a.link}
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                {a.dehyped_summary || a.title}
-                            </a>
-                            <span className="summary-exp-time">{relativeTime(a.published_at)}</span>
-                        </li>
-                    ))}
+                <ul className={`summary-exp-bullets ${needsScroll ? 'summary-exp-bullets--scroll' : ''}`}>
+                    {matched.map(a => {
+                        const fresh = isFresh(a.published_at);
+                        return (
+                            <li key={a.id} className={`summary-exp-bullet ${fresh ? 'summary-exp-bullet--fresh' : ''}`}>
+                                {fresh && <span className="summary-exp-fresh-dot" />}
+                                <a
+                                    className="summary-exp-text"
+                                    href={a.link}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    {truncate(a.dehyped_summary || a.title, 120)}
+                                </a>
+                                <span className={`summary-exp-time ${fresh ? 'summary-exp-time--fresh' : ''}`}>
+                                    {relativeTime(a.published_at)}
+                                </span>
+                            </li>
+                        );
+                    })}
                 </ul>
             ) : (
                 <p className="summary-exp-empty">No recent articles.</p>
@@ -1215,7 +1227,7 @@ const NewsView = () => {
 
     const [sources, setSources] = useState([]);
 
-    const [targetsOpen,     setTargetsOpen]     = useState(true);
+    const [targetsOpen,     setTargetsOpen]     = useState(false);
     const [viewMode,        setViewMode]        = useState('front-page');
     const [scheduleStatus,  setScheduleStatus]  = useState(null);
     const [, schedTick] = useState(0);
@@ -1333,6 +1345,25 @@ const NewsView = () => {
         return () => clearInterval(id);
     }, [fetchData, fetchAiStats, fetchScheduleStatus]);
 
+    // Re-fetch immediately when the tab becomes visible again after being
+    // backgrounded — browsers throttle setInterval in hidden tabs so the
+    // 5-minute tick may be hours late by the time the user returns.
+    useEffect(() => {
+        let hiddenAt = null;
+        const onVisibility = () => {
+            if (document.hidden) {
+                hiddenAt = Date.now();
+            } else if (hiddenAt !== null && Date.now() - hiddenAt > 60_000) {
+                fetchData(true);
+                fetchAiStats();
+                fetchScheduleStatus();
+                hiddenAt = null;
+            }
+        };
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => document.removeEventListener('visibilitychange', onVisibility);
+    }, [fetchData, fetchAiStats, fetchScheduleStatus]);
+
     useEffect(() => {
         const id = setInterval(() => schedTick(n => n + 1), 60_000);
         return () => clearInterval(id);
@@ -1342,13 +1373,13 @@ const NewsView = () => {
         targets.filter(t => t.target_type === 'Ticker').map(t => t.target_value.toUpperCase())
     );
     const topicSet = new Set(
-        targets.filter(t => t.target_type !== 'Ticker').map(t => t.target_value)
+        targets.filter(t => t.target_type !== 'Ticker').map(t => t.target_value.toLowerCase())
     );
 
     const isPortfolioArticle = (b) =>
         tickerSet.size > 0 && (b.matched_targets || []).some(t => tickerSet.has(t.toUpperCase()));
     const isTopicArticle = (b) =>
-        !isPortfolioArticle(b) && topicSet.size > 0 && (b.matched_targets || []).some(t => topicSet.has(t));
+        !isPortfolioArticle(b) && topicSet.size > 0 && (b.matched_targets || []).some(t => topicSet.has(t.toLowerCase()));
     const meetsSignal = (b) => ((b.impact_score || 0) - (b.hype_score || 0)) >= 0;
 
     const portfolioArticles = sortArticles(briefings.filter(b => isPortfolioArticle(b) && meetsSignal(b)));
@@ -1363,7 +1394,7 @@ const NewsView = () => {
                 return acc;
             }, {})
     );
-    const topicSummaries = summaries.filter(s => s.target_type && s.target_type !== 'Ticker' && topicSet.has(s.target_value));
+    const topicSummaries = summaries.filter(s => s.target_type && s.target_type !== 'Ticker' && topicSet.has(s.target_value.toLowerCase()));
 
     const tickerCount    = targets.filter(t => t.target_type === 'Ticker').length;
     const nonTickerCount = targets.filter(t => t.target_type !== 'Ticker').length;
