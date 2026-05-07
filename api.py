@@ -776,8 +776,7 @@ if _DIST.exists():
 if __name__ == "__main__":
     import uvicorn
 
-    cwd = Path.cwd().name
-    module_path = "api:app" if cwd == "intelligence" else "projects.intelligence.api:app"
+    module_path = "api:app" if Path("api.py").exists() else "projects.intelligence.api:app"
 
     uvicorn.run(
         module_path,
