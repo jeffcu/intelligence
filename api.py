@@ -12,6 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent / ".env")
 
 SUMMARIZER = Path(__file__).parent / "summarizer.py"
 
