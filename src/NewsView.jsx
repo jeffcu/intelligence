@@ -28,8 +28,9 @@ function isOld(isoString) {
 
 function fmtAgo(iso) {
     if (!iso) return 'never';
-    const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-    if (m < 1) return 'just now';
+    const m = Math.floor((Date.now() - new Date(iso.replace(' ', 'T')).getTime()) / 60000);
+    if (m < 0)  return '—';
+    if (m < 1)  return 'just now';
     if (m < 60) return `${m}m ago`;
     const h = Math.floor(m / 60), r = m % 60;
     return r ? `${h}h ${r}m ago` : `${h}h ago`;
@@ -41,6 +42,41 @@ function fmtCountdown(iso) {
     if (m < 60) return `in ${m}m`;
     const h = Math.floor(m / 60), r = m % 60;
     return r ? `in ${h}h ${r}m` : `in ${h}h`;
+}
+
+// SQLite returns "YYYY-MM-DD HH:MM:SS[.ffffff]" (space, no tz).
+// Replacing space → T lets JS parse it as local time, matching the server's local clock.
+function parseSchedDate(iso) {
+    return new Date(iso.replace(' ', 'T'));
+}
+
+function fmtWallLocal(iso) {
+    if (!iso) return '—';
+    const d = parseSchedDate(iso);
+    if (isNaN(d.getTime())) return '—';
+    const parts = new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZoneName: 'short',
+    }).formatToParts(d);
+    const hour      = parts.find(p => p.type === 'hour')?.value      || '';
+    const minute    = parts.find(p => p.type === 'minute')?.value    || '';
+    const dayPeriod = parts.find(p => p.type === 'dayPeriod')?.value || '';
+    const tz        = parts.find(p => p.type === 'timeZoneName')?.value || '';
+    const time      = minute === '00' ? `${hour} ${dayPeriod}` : `${hour}:${minute} ${dayPeriod}`;
+    return tz ? `${time} ${tz}` : time;
+}
+
+function fmtDayLocal(iso) {
+    if (!iso) return '';
+    const d = parseSchedDate(iso);
+    if (isNaN(d.getTime())) return '';
+    const today    = new Date();
+    const tomorrow = new Date(); tomorrow.setDate(today.getDate() + 1);
+    if (d.toDateString() === today.toDateString())    return 'Today';
+    if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
+    return d.toLocaleDateString('en-US', { weekday: 'long' });
 }
 
 function sortArticles(articles) {
@@ -1425,9 +1461,17 @@ const NewsView = () => {
                 <div className="header-controls">
                     {scheduleStatus && (
                         <div className="sched-status">
-                            <span>Updated <strong className="sched-ago">{fmtAgo(scheduleStatus.last_ingest)}</strong></span>
+                            <span className="sched-chunk">
+                                <span className="sched-label">Last</span>
+                                <span className="sched-wall">{fmtWallLocal(scheduleStatus.last_ingest)}</span>
+                                <span className="sched-rel">{fmtAgo(scheduleStatus.last_ingest)}</span>
+                            </span>
                             <span className="sched-sep">·</span>
-                            <span>Next <strong className="sched-next">{fmtCountdown(scheduleStatus.next_ingest)}</strong></span>
+                            <span className="sched-chunk">
+                                <span className="sched-label">Next</span>
+                                <span className="sched-wall">{fmtWallLocal(scheduleStatus.next_ingest)}</span>
+                                <span className="sched-day">{fmtDayLocal(scheduleStatus.next_ingest)}</span>
+                            </span>
                         </div>
                     )}
                 </div>

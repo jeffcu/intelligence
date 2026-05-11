@@ -106,17 +106,43 @@
 .sched-status {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    font-size: 0.75em;
-    color: #666;
+    gap: 0.5rem;
+    font-size: 0.78em;
     white-space: nowrap;
 }
 
-.sched-ago  { color: #E2B254; }
-.sched-next { color: #05c46b; }
+.sched-chunk {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.sched-label {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.85em;
+    color: #555;
+}
+
+.sched-wall {
+    color: #ccc;
+    font-weight: 500;
+}
+
+.sched-rel {
+    color: #E2B254;
+    font-weight: 600;
+}
+
+.sched-day {
+    color: #05c46b;
+    font-weight: 600;
+}
 
 .sched-sep {
     color: #333;
+    font-size: 1.1em;
 }
 
 /* ── AI Usage Bar ── */

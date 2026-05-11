@@ -1,7 +1,7 @@
 """
 News Ingestion + Briefing Scheduler
-Runs the ingestor at 7:00 AM, 12:00 PM, and 3:00 PM, and the
-company briefing summarizer at 8:00 AM, 2:00 PM, and 5:00 PM — every day.
+Runs the ingestor at 7:00 AM, 12:00 PM, and 3:00 PM — every day.
+The summarizer runs immediately after each ingest completes.
 
 Run once and leave it in the background:  python news_scheduler.py
 """
@@ -28,31 +28,28 @@ DB_PATH    = Path(__file__).parent / "intelligence.db"
 _venv_python = Path(__file__).parent / "venv" / "bin" / "python"
 PYTHON = str(_venv_python) if _venv_python.exists() else sys.executable
 
-# Scheduled run times: (hour, minute, task)  — runs every day, no weekend skip
+# Ingest times — summarizer runs immediately after each ingest completes.
 SCHEDULE = [
-    (7,  0,  'ingest'),
-    (8,  0,  'summarize'),
-    (12, 0,  'ingest'),
-    (14, 0,  'summarize'),
-    (15, 0,  'ingest'),
-    (17, 0,  'summarize'),
+    (7,  0),
+    (12, 0),
+    (15, 0),
 ]
 
 # Trigger a catch-up ingest on startup if data is older than this many hours.
 STALE_INGEST_HOURS = 5
 
 
-def seconds_until_next_run() -> tuple[float, datetime, str]:
-    """Return (seconds_to_wait, next_run_datetime, task) for the next scheduled slot."""
+def seconds_until_next_run() -> tuple[float, datetime]:
+    """Return (seconds_to_wait, next_run_datetime) for the next scheduled ingest."""
     now = datetime.now()
     candidates = []
-    for hour, minute, task in SCHEDULE:
+    for hour, minute in SCHEDULE:
         target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if target <= now:
             target += timedelta(days=1)
-        candidates.append((target, task))
-    next_run, task = min(candidates, key=lambda x: x[0])
-    return (next_run - now).total_seconds(), next_run, task
+        candidates.append(target)
+    next_run = min(candidates)
+    return (next_run - now).total_seconds(), next_run
 
 
 def last_ingest_time() -> datetime | None:
@@ -70,9 +67,9 @@ def last_ingest_time() -> datetime | None:
     return None
 
 
-def run_ingestor():
+def run_ingest_then_summarize():
     logging.info("=" * 60)
-    logging.info("Triggering news ingestion cycle...")
+    logging.info("Step 1/2 — Ingesting news...")
     try:
         result = subprocess.run(
             [PYTHON, str(INGESTOR)],
@@ -80,18 +77,17 @@ def run_ingestor():
             capture_output=False,
             text=True,
         )
-        if result.returncode == 0:
-            logging.info("Ingestion cycle completed successfully.")
-        else:
-            logging.error(f"Ingestor exited with code {result.returncode}.")
+        if result.returncode != 0:
+            logging.error(f"Ingestor exited with code {result.returncode} — skipping summarizer.")
+            logging.info("=" * 60)
+            return
+        logging.info("Ingestion complete.")
     except Exception as e:
-        logging.error(f"Failed to launch ingestor: {e}")
-    logging.info("=" * 60)
+        logging.error(f"Failed to launch ingestor: {e} — skipping summarizer.")
+        logging.info("=" * 60)
+        return
 
-
-def run_summarizer():
-    logging.info("=" * 60)
-    logging.info("Triggering daily company briefing summaries...")
+    logging.info("Step 2/2 — Summarizing briefings...")
     try:
         result = subprocess.run(
             [PYTHON, str(SUMMARIZER)],
@@ -100,7 +96,7 @@ def run_summarizer():
             text=True,
         )
         if result.returncode == 0:
-            logging.info("Briefing generation completed successfully.")
+            logging.info("Summarization complete.")
         else:
             logging.error(f"Summarizer exited with code {result.returncode}.")
     except Exception as e:
@@ -109,35 +105,40 @@ def run_summarizer():
 
 
 def main():
-    schedule_display = [f'{h:02d}:{m:02d}[{t}]' for h, m, t in SCHEDULE]
+    schedule_display = [f'{h:02d}:{m:02d}' for h, m in SCHEDULE]
     logging.info("News Scheduler started.")
-    logging.info(f"Schedule: {schedule_display} local time (7 days a week)")
+    logging.info(f"Schedule: {schedule_display} local time — ingest + summarize each run (7 days a week)")
 
-    # Catch-up: if data is stale, run ingest immediately before entering the loop.
+    # Catch-up: if data is stale, run ingest+summarize immediately before entering the loop.
     last = last_ingest_time()
     if last is None:
-        logging.info("No ingest history found — running catch-up ingest now.")
-        run_ingestor()
+        logging.info("No ingest history found — running catch-up now.")
+        run_ingest_then_summarize()
     else:
         hours_since = (datetime.now() - last).total_seconds() / 3600
         if hours_since > STALE_INGEST_HOURS:
-            logging.info(f"Data is {hours_since:.1f}h old (threshold {STALE_INGEST_HOURS}h) — running catch-up ingest.")
-            run_ingestor()
+            logging.info(f"Data is {hours_since:.1f}h old (threshold {STALE_INGEST_HOURS}h) — running catch-up.")
+            run_ingest_then_summarize()
         else:
             logging.info(f"Data is fresh ({hours_since:.1f}h old) — no catch-up needed.")
 
+    last_logged_next_run = None
     while True:
-        wait_secs, next_run, task = seconds_until_next_run()
-        logging.info(
-            f"Next run: {next_run.strftime('%A %Y-%m-%d %H:%M')} "
-            f"[{task}] (in {timedelta(seconds=int(wait_secs))})"
-        )
-        time.sleep(wait_secs)
+        wait_secs, next_run = seconds_until_next_run()
 
-        if task == 'summarize':
-            run_summarizer()
+        if next_run != last_logged_next_run:
+            logging.info(
+                f"Next run: {next_run.strftime('%A %Y-%m-%d %H:%M')} "
+                f"(in {timedelta(seconds=int(wait_secs))})"
+            )
+            last_logged_next_run = next_run
+
+        # Poll every 60 seconds so system sleep/wake doesn't cause missed runs.
+        if wait_secs <= 0:
+            last_logged_next_run = None
+            run_ingest_then_summarize()
         else:
-            run_ingestor()
+            time.sleep(min(60, wait_secs))
 
 
 if __name__ == "__main__":
