@@ -17,80 +17,138 @@ fail() { echo -e "${RED}✗${RESET} $1"; echo ""; exit 1; }
 step() { echo -e "\n${BOLD}$1${RESET}"; }
 hr()   { echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; }
 
+# Ask user yes/no; return 0 for yes, 1 for no
+ask_install() {
+    local prompt="$1"
+    printf "  %s [Y/n]: " "$prompt"
+    read -r answer
+    case "$answer" in
+        [nN]*) return 1 ;;
+        *)     return 0 ;;
+    esac
+}
+
+# Detect OS for platform-specific guidance
+IS_MAC=false
+if [[ "$(uname)" == "Darwin" ]]; then IS_MAC=true; fi
+
 echo ""
 echo -e "${BOLD}Intelligence — Install${RESET}"
 hr
 echo ""
 
+# ── Pre-flight: Homebrew (macOS only) ─────────────────────────────────────────
+if $IS_MAC && ! command -v brew &>/dev/null; then
+    warn "Homebrew not found — it is needed to install Python, Node.js, and Git."
+    echo ""
+    echo "  Homebrew is a free Mac package manager that installs developer tools"
+    echo "  with a single command. See https://brew.sh for details."
+    echo ""
+    if ask_install "Install Homebrew now?"; then
+        echo "  Installing Homebrew (you may be asked for your Mac password)..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        # Add brew to PATH for Apple Silicon if needed
+        if [ -x /opt/homebrew/bin/brew ]; then
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+        fi
+        ok "Homebrew installed"
+    else
+        fail "Homebrew is required on macOS. Run this script again when Homebrew is installed."
+    fi
+fi
+
 # ── Step 1: Python 3.11+ ──────────────────────────────────────────────────────
 step "1 / 5  Python"
 
 # Prefer python3.11+ explicitly if available, fall back to python3
-if command -v python3.11 &>/dev/null; then
-    PYTHON_BIN=python3.11
-elif command -v python3.12 &>/dev/null; then
-    PYTHON_BIN=python3.12
-elif command -v python3.13 &>/dev/null; then
-    PYTHON_BIN=python3.13
-elif command -v python3 &>/dev/null; then
-    PYTHON_BIN=python3
+find_python() {
+    for cmd in python3.13 python3.12 python3.11 python3; do
+        if command -v "$cmd" &>/dev/null; then
+            echo "$cmd"; return
+        fi
+    done
+}
+
+PYTHON_BIN=$(find_python)
+
+# If nothing found, or version is too old, offer to install
+needs_python=false
+if [ -z "$PYTHON_BIN" ]; then
+    needs_python=true
 else
-    fail "Python 3 not found.
-
-  Install Python 3.11 or newer:
-    macOS:   brew install python@3.11
-    Linux:   sudo apt install python3.11 python3.11-venv  (Debian/Ubuntu)
-             sudo dnf install python3.11                  (Fedora/RHEL)
-
-  Then run this script again."
+    PY_MAJOR=$("$PYTHON_BIN" -c 'import sys; print(sys.version_info.major)')
+    PY_MINOR=$("$PYTHON_BIN" -c 'import sys; print(sys.version_info.minor)')
+    if [ "$PY_MAJOR" -lt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 11 ]; }; then
+        warn "Found Python $PY_MAJOR.$PY_MINOR — version 3.11 or newer is required."
+        needs_python=true
+    fi
 fi
 
-PY_MAJOR=$("$PYTHON_BIN" -c 'import sys; print(sys.version_info.major)')
-PY_MINOR=$("$PYTHON_BIN" -c 'import sys; print(sys.version_info.minor)')
-PY_VER="$PY_MAJOR.$PY_MINOR"
-
-if [ "$PY_MAJOR" -lt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 11 ]; }; then
-    fail "Python 3.11+ required — found $PY_VER.
-
-  Install a newer version:
-    macOS:   brew install python@3.11
-    Linux:   sudo apt install python3.11 python3.11-venv
-
+if $needs_python; then
+    if $IS_MAC && command -v brew &>/dev/null; then
+        if ask_install "Python 3.11+ not found. Install it now via Homebrew?"; then
+            echo "  Installing Python 3.11 (this may take a minute)..."
+            brew install python@3.11
+            PYTHON_BIN=python3.11
+        else
+            fail "Python 3.11+ is required. Run this script again after installing Python."
+        fi
+    else
+        fail "Python 3.11+ not found.
+  Install it:
+    macOS:  brew install python@3.11
+    Linux:  sudo apt install python3.11 python3.11-venv
   Then run this script again."
+    fi
 fi
 
+PY_VER=$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
 ok "Python $PY_VER ($PYTHON_BIN)"
 
 # ── Step 2: Node.js 18+ ───────────────────────────────────────────────────────
 step "2 / 5  Node.js (required for the web UI)"
 
+needs_node=false
 if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
-    fail "Node.js not found. The web UI requires Node.js 18 or newer.
+    needs_node=true
+else
+    NODE_MAJOR=$(node --version | tr -d 'v' | cut -d. -f1)
+    if [ "$NODE_MAJOR" -lt 18 ]; then
+        warn "Found Node.js $(node --version) — version 18 or newer is required."
+        needs_node=true
+    fi
+fi
 
-  Install options:
-    macOS:   brew install node
-    Linux:   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-             sudo apt install -y nodejs
-
-    Or download directly: https://nodejs.org  (choose the LTS version)
-
+if $needs_node; then
+    if $IS_MAC && command -v brew &>/dev/null; then
+        if ask_install "Node.js 18+ not found. Install it now via Homebrew?"; then
+            echo "  Installing Node.js (this may take a minute)..."
+            brew install node
+        else
+            fail "Node.js 18+ is required (it builds the web interface). Run this script again after installing Node.js."
+        fi
+    else
+        fail "Node.js 18+ not found.
+  Install it:
+    macOS:  brew install node
+    Linux:  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt install -y nodejs
   Then run this script again."
+    fi
 fi
 
 NODE_VER=$(node --version)
-NODE_MAJOR=$(node --version | tr -d 'v' | cut -d. -f1)
-if [ "$NODE_MAJOR" -lt 18 ]; then
-    fail "Node.js 18+ required — found $NODE_VER.
-
-  Upgrade:
-    macOS:   brew upgrade node
-    Linux:   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-             sudo apt install -y nodejs
-
-  Then run this script again."
-fi
-
 ok "Node.js $NODE_VER, npm $(npm --version)"
+
+# ── Git check (informational — git clone already happened if we're running) ───
+if ! command -v git &>/dev/null; then
+    warn "git not found — you will need it for future updates."
+    if $IS_MAC && command -v brew &>/dev/null; then
+        if ask_install "Install Git now via Homebrew?"; then
+            brew install git
+            ok "Git installed"
+        fi
+    fi
+fi
 
 # ── Step 3: Python virtual environment ───────────────────────────────────────
 step "3 / 5  Python environment"
