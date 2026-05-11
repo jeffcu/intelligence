@@ -533,8 +533,9 @@ def log_ai_usage(cursor, start_time, response, model_name):
         t_tokens = response.usage_metadata.total_token_count
     else:
         p_tokens = c_tokens = t_tokens = 0
-    # Gemini 2.5 Flash pricing: $0.075/1M input, $0.30/1M output
-    est_cost = (p_tokens * 0.000000075) + (c_tokens * 0.00000030)
+    th_tokens = getattr(response.usage_metadata, 'thoughts_token_count', None) or 0 if hasattr(response, 'usage_metadata') and response.usage_metadata else 0
+    # Gemini 2.5 Flash: $0.15/1M input, $0.60/1M output, $3.50/1M thinking
+    est_cost = (p_tokens * 1.5e-7) + (c_tokens * 6.0e-7) + (th_tokens * 3.5e-6)
     cursor.execute('''
         INSERT INTO ai_usage_logs
             (model_id, request_type, prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd, latency_ms, status_code)

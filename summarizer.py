@@ -33,8 +33,9 @@ API_KEY  = os.getenv("GEMINI_API_KEY")
 DB_PATH  = Path(os.getenv("DB_PATH", str(Path(__file__).parent / "intelligence.db")))
 MODEL    = "gemini-2.5-flash"
 
-COST_INPUT  = 0.000000075   # $ per input token
-COST_OUTPUT = 0.00000030    # $ per output token
+COST_INPUT    = 1.5e-7   # $0.15 per million input tokens (Gemini 2.5 Flash)
+COST_OUTPUT   = 6.0e-7   # $0.60 per million output tokens
+COST_THINKING = 3.5e-6   # $3.50 per million thinking tokens
 
 
 # ---------------------------------------------------------------------------
@@ -186,8 +187,9 @@ def log_ai_usage(cursor, response, request_type: str):
         return
     p = response.usage_metadata.prompt_token_count or 0
     c = response.usage_metadata.candidates_token_count or 0
+    th = getattr(response.usage_metadata, 'thoughts_token_count', None) or 0
     t = response.usage_metadata.total_token_count or 0
-    cost = (p * COST_INPUT) + (c * COST_OUTPUT)
+    cost = (p * COST_INPUT) + (c * COST_OUTPUT) + (th * COST_THINKING)
     cursor.execute('''
         INSERT INTO ai_usage_logs
             (model_id, request_type, prompt_tokens, completion_tokens,
