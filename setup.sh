@@ -108,18 +108,40 @@ echo ""
 docker compose up -d --build
 
 # Wait for the API to come up
+# First-run note: the scheduler triggers an immediate news ingest which initializes
+# chromadb (downloads ONNX models ~400 MB). This can take 3-5 minutes on a slow
+# connection while competing for disk I/O with the API startup. 180s covers it.
 echo ""
-echo "  Waiting for API to start…"
-max_wait=60
+echo "  Waiting for API to start… (up to 3 min on first run)"
+max_wait=180
 waited=0
+dots=0
 while ! curl -sf http://localhost:8001/health &>/dev/null; do
-    sleep 2
-    waited=$((waited + 2))
+    sleep 3
+    waited=$((waited + 3))
+    dots=$((dots + 1))
+    printf "."
+    # Every 30 seconds print a reassurance so the user doesn't think it froze
+    if [ $((dots % 10)) -eq 0 ]; then
+        echo ""
+        echo "  Still starting… ($waited s elapsed — first-run chromadb init can be slow)"
+    fi
     if [ $waited -ge $max_wait ]; then
-        fail "API did not start within ${max_wait}s. Check logs with: docker logs intelligence"
+        echo ""
+        fail "API did not start within ${max_wait}s."
+        echo ""
+        echo "  Last 30 lines of container log:"
+        echo "  ──────────────────────────────────────────────────"
+        docker logs intelligence --tail 30 2>&1 | sed 's/^/  /'
+        echo "  ──────────────────────────────────────────────────"
+        echo ""
+        echo "  Common causes:"
+        echo "    • Port 8001 taken by another process  →  lsof -i :8001"
+        echo "    • Corrupt data volume (try: docker compose down -v && bash setup.sh)"
+        echo "    • Low disk space  →  docker system df"
+        echo ""
         exit 1
     fi
-    printf "."
 done
 echo ""
 
