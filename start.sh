@@ -67,6 +67,13 @@ for pidfile in api.pid scheduler.pid; do
     fi
 done
 
+# Also evict any process holding port 8001 that wasn't in a pidfile
+port_pid=$(lsof -ti:8001 2>/dev/null)
+if [ -n "$port_pid" ]; then
+    kill "$port_pid" 2>/dev/null && echo "  Evicted orphan on port 8001 (PID $port_pid)"
+    sleep 1
+fi
+
 # ── Start API ──────────────────────────────────────────────────────────────────
 "$PYTHON" api.py >> api.log 2>&1 &
 echo $! > api.pid
