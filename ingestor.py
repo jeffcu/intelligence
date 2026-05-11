@@ -538,9 +538,9 @@ def log_ai_usage(cursor, start_time, response, model_name):
     est_cost = (p_tokens * 1.5e-7) + (c_tokens * 6.0e-7) + (th_tokens * 3.5e-6)
     cursor.execute('''
         INSERT INTO ai_usage_logs
-            (model_id, request_type, prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd, latency_ms, status_code)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (model_name, 'de-hype-extraction', p_tokens, c_tokens, t_tokens, est_cost, latency, 200))
+            (timestamp, model_id, request_type, prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd, latency_ms, status_code)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), model_name, 'de-hype-extraction', p_tokens, c_tokens, t_tokens, est_cost, latency, 200))
 
 
 def log_source_deflect(cursor, source_name):

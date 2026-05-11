@@ -192,10 +192,10 @@ def log_ai_usage(cursor, response, request_type: str):
     cost = (p * COST_INPUT) + (c * COST_OUTPUT) + (th * COST_THINKING)
     cursor.execute('''
         INSERT INTO ai_usage_logs
-            (model_id, request_type, prompt_tokens, completion_tokens,
+            (timestamp, model_id, request_type, prompt_tokens, completion_tokens,
              total_tokens, estimated_cost_usd, latency_ms, status_code)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (MODEL, request_type, p, c, t, cost, 0, 200))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), MODEL, request_type, p, c, t, cost, 0, 200))
 
 
 def _store_summary(cursor, target_value: str, target_type: str, result: dict, article_count: int):

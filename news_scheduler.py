@@ -61,7 +61,12 @@ def last_ingest_time() -> datetime | None:
         row = cursor.fetchone()
         conn.close()
         if row and row[0]:
-            return datetime.fromisoformat(row[0])
+            ts = datetime.fromisoformat(row[0])
+            # Defensive: if the stored timestamp appears future-dated it was likely
+            # written as UTC (old CURRENT_TIMESTAMP default). Shift by 7h (PDT).
+            if ts > datetime.now() + timedelta(minutes=5):
+                ts -= timedelta(hours=7)
+            return ts
     except Exception:
         pass
     return None
@@ -104,28 +109,60 @@ def run_ingest_then_summarize():
     logging.info("=" * 60)
 
 
+def due_slot(last_run: datetime | None) -> datetime | None:
+    """
+    Return the most recent scheduled slot that has passed but hasn't been run yet.
+    Handles the case where the process wakes up right at the scheduled time —
+    the slot is already "in the past" by the time we check.
+    """
+    now = datetime.now()
+    best: datetime | None = None
+    for hour, minute in SCHEDULE:
+        slot = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if slot > now:
+            continue  # future — not yet due
+        if last_run is not None and slot <= last_run:
+            continue  # already ran this slot
+        if best is None or slot > best:
+            best = slot
+    return best
+
+
 def main():
     schedule_display = [f'{h:02d}:{m:02d}' for h, m in SCHEDULE]
     logging.info("News Scheduler started.")
     logging.info(f"Schedule: {schedule_display} local time — ingest + summarize each run (7 days a week)")
 
-    # Catch-up: if data is stale, run ingest+summarize immediately before entering the loop.
+    # On startup, check if data is stale and catch up if so.
+    last_run: datetime | None = None
     last = last_ingest_time()
     if last is None:
         logging.info("No ingest history found — running catch-up now.")
         run_ingest_then_summarize()
+        last_run = datetime.now()
     else:
         hours_since = (datetime.now() - last).total_seconds() / 3600
         if hours_since > STALE_INGEST_HOURS:
             logging.info(f"Data is {hours_since:.1f}h old (threshold {STALE_INGEST_HOURS}h) — running catch-up.")
             run_ingest_then_summarize()
+            last_run = datetime.now()
         else:
             logging.info(f"Data is fresh ({hours_since:.1f}h old) — no catch-up needed.")
+            last_run = last  # treat DB timestamp as last run so we don't re-run a fresh slot
 
     last_logged_next_run = None
     while True:
-        wait_secs, next_run = seconds_until_next_run()
+        # Check if a scheduled slot has passed since the last run.
+        slot = due_slot(last_run)
+        if slot is not None:
+            last_logged_next_run = None
+            logging.info(f"Slot {slot.strftime('%H:%M')} is due — running ingest+summarize.")
+            run_ingest_then_summarize()
+            last_run = slot
+            continue  # re-check immediately in case multiple slots were missed
 
+        # Nothing due — sleep until just after the next slot.
+        wait_secs, next_run = seconds_until_next_run()
         if next_run != last_logged_next_run:
             logging.info(
                 f"Next run: {next_run.strftime('%A %Y-%m-%d %H:%M')} "
@@ -134,11 +171,7 @@ def main():
             last_logged_next_run = next_run
 
         # Poll every 60 seconds so system sleep/wake doesn't cause missed runs.
-        if wait_secs <= 0:
-            last_logged_next_run = None
-            run_ingest_then_summarize()
-        else:
-            time.sleep(min(60, wait_secs))
+        time.sleep(min(60, wait_secs))
 
 
 if __name__ == "__main__":
