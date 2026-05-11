@@ -1,12 +1,24 @@
 #!/bin/bash
+# Intelligence — stop API + scheduler
+
 cd "$(dirname "$0")"
 
-for pidfile in frontend.pid api.pid scheduler.pid; do
+stopped=0
+for pidfile in api.pid scheduler.pid; do
     if [ -f "$pidfile" ]; then
         pid=$(cat "$pidfile")
-        kill "$pid" 2>/dev/null && echo "Stopped $(basename $pidfile .pid) (PID $pid)" || true
+        name=$(basename "$pidfile" .pid)
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null
+            echo "Stopped $name (PID $pid)"
+            stopped=$((stopped + 1))
+        else
+            echo "$name (PID $pid) was not running"
+        fi
         rm -f "$pidfile"
     fi
 done
 
-echo "Intelligence stopped."
+if [ $stopped -eq 0 ]; then
+    echo "Nothing was running."
+fi

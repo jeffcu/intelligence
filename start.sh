@@ -1,48 +1,78 @@
 #!/bin/bash
-# Intelligence — start API + scheduler
-# Run install.sh first if you haven't already.
+# Intelligence — start API + scheduler (daily use)
+# First-time setup: run install.sh
 
-set -e
 cd "$(dirname "$0")"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+BOLD='\033[1m'
 RESET='\033[0m'
 
 ok()   { echo -e "${GREEN}✓${RESET} $1"; }
 warn() { echo -e "${YELLOW}⚠${RESET}  $1"; }
-fail() { echo -e "${RED}✗${RESET} $1"; exit 1; }
+fail() { echo -e "${RED}✗${RESET} $1"; echo ""; exit 1; }
 
-# ── Pre-flight ────────────────────────────────────────────────────────────────
+echo ""
+echo -e "${BOLD}Intelligence — Starting${RESET}"
+echo ""
+
+# ── Pre-flight checks ─────────────────────────────────────────────────────────
+
+# Venv: create and install if missing, verify if present
 if [ ! -d venv ]; then
-    fail "Virtual environment not found. Run:  bash install.sh"
-fi
-
-if [ ! -f .env ]; then
-    fail ".env file missing. Run:  bash install.sh"
+    warn "No virtual environment found — creating one now..."
+    if ! command -v python3 &>/dev/null; then
+        fail "Python 3 not found. Run install.sh first."
+    fi
+    python3 -m venv venv
+    venv/bin/pip install -q --upgrade pip
+    venv/bin/pip install -q -r requirements.txt
+    ok "Virtual environment created and dependencies installed"
+elif ! venv/bin/python -c "import fastapi" &>/dev/null 2>&1; then
+    warn "Virtual environment exists but dependencies are missing — installing now..."
+    venv/bin/pip install -q --upgrade pip
+    venv/bin/pip install -q -r requirements.txt
+    ok "Dependencies installed"
 fi
 
 PYTHON=venv/bin/python
 
-# ── Kill any stale processes from a previous run ──────────────────────────────
-for pidfile in scheduler.pid api.pid; do
+# .env
+if [ ! -f .env ]; then
+    fail ".env file missing. Run install.sh to set up your Gemini API key."
+fi
+
+# Built frontend
+if [ ! -d dist ]; then
+    warn "Web UI not built — building now (requires Node.js)..."
+    if ! command -v npm &>/dev/null; then
+        fail "npm not found. Install Node.js 18+ then run install.sh."
+    fi
+    npm install --silent
+    npm run build --silent
+    ok "Web UI built"
+fi
+
+# ── Kill any stale processes ───────────────────────────────────────────────────
+for pidfile in api.pid scheduler.pid; do
     if [ -f "$pidfile" ]; then
         old_pid=$(cat "$pidfile")
         if kill -0 "$old_pid" 2>/dev/null; then
-            kill "$old_pid" 2>/dev/null && echo "Stopped stale $(basename $pidfile .pid) (PID $old_pid)"
+            kill "$old_pid" 2>/dev/null
+            echo "  Stopped stale $(basename $pidfile .pid) (PID $old_pid)"
         fi
         rm -f "$pidfile"
     fi
 done
 
-# ── Start API ─────────────────────────────────────────────────────────────────
+# ── Start API ──────────────────────────────────────────────────────────────────
 "$PYTHON" api.py >> api.log 2>&1 &
-API_PID=$!
-echo $API_PID > api.pid
-ok "API started (PID $API_PID) — logging to api.log"
+echo $! > api.pid
+ok "API started (PID $(cat api.pid))"
 
-# ── Wait for API to be ready ──────────────────────────────────────────────────
+# ── Wait for API to respond ────────────────────────────────────────────────────
 echo -n "  Waiting for API"
 max_wait=60
 waited=0
@@ -52,34 +82,29 @@ while ! curl -sf http://localhost:8001/health &>/dev/null; do
     printf "."
     if [ $waited -ge $max_wait ]; then
         echo ""
-        fail "API did not start within ${max_wait}s. Check the log:  tail -50 api.log"
+        fail "API did not respond within ${max_wait}s.
+  Check the log for errors:  tail -30 api.log"
     fi
 done
 echo " ready."
 
-# ── Start scheduler ───────────────────────────────────────────────────────────
-# Starts after the API is confirmed up so it doesn't compete with port binding.
+# ── Start scheduler ────────────────────────────────────────────────────────────
+# Starts after the API is confirmed up so chromadb init doesn't race port bind.
 "$PYTHON" news_scheduler.py >> scheduler.log 2>&1 &
-SCHED_PID=$!
-echo $SCHED_PID > scheduler.pid
-ok "Scheduler started (PID $SCHED_PID) — logging to scheduler.log"
+echo $! > scheduler.pid
+ok "Scheduler started (PID $(cat scheduler.pid))"
 
-# ── Report ────────────────────────────────────────────────────────────────────
-echo ""
+# ── Status ────────────────────────────────────────────────────────────────────
 health=$(curl -sf http://localhost:8001/health 2>/dev/null || echo '{}')
-key_status=$(echo "$health" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('api_key','?'))" 2>/dev/null || echo "unknown")
+key_ok=$(echo "$health" | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if 'MISSING' not in d.get('api_key','MISSING') else 'no')" 2>/dev/null || echo "no")
 
-if [[ "$key_status" == *"MISSING"* ]]; then
-    warn "API is running but Gemini key is not set — edit .env and restart."
-else
-    ok "Gemini key configured"
+if [ "$key_ok" != "yes" ]; then
+    warn "Gemini key not recognised — edit .env and run:  bash stop.sh && bash start.sh"
 fi
 
 echo ""
-echo "  Intelligence running at:  http://localhost:8001"
+echo -e "  ${BOLD}http://localhost:8001${RESET}  ← open this in your browser"
 echo ""
-echo "  Useful commands:"
-echo "    tail -f api.log            — watch API output"
-echo "    tail -f scheduler.log      — watch scheduler / ingest output"
-echo "    bash stop.sh               — stop everything"
+echo "  Logs:  tail -f api.log scheduler.log"
+echo "  Stop:  bash stop.sh"
 echo ""
