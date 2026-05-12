@@ -281,8 +281,10 @@ const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
 const EXP_VISIBLE_LIMIT = 6;
 
 const SummaryCardExp = ({ summary, articles }) => {
+    const [factsOpen, setFactsOpen] = useState(false);
     const sentColor = SENTIMENT_COLORS[summary.sentiment] || '#888';
     const isTicker  = !summary.target_type || summary.target_type === 'Ticker';
+    const hasFacts  = summary.key_facts && summary.key_facts.length > 0;
 
     const matched = articles
         .filter(a => (a.matched_targets || []).some(
@@ -306,9 +308,25 @@ const SummaryCardExp = ({ summary, articles }) => {
                     <span className="summary-material-badge">Material</span>
                 )}
                 <span className="summary-meta">
-                    {matched.length} article{matched.length !== 1 ? 's' : ''}
+                    {summary.article_count} article{summary.article_count !== 1 ? 's' : ''}
+                    &nbsp;·&nbsp;{relativeTime(summary.generated_at)}
                 </span>
             </div>
+
+            {summary.paragraph && (
+                <p className="summary-paragraph">{renderHighlighted(summary.paragraph)}</p>
+            )}
+
+            {hasFacts && (
+                <button className="summary-facts-toggle" onClick={() => setFactsOpen(o => !o)}>
+                    {factsOpen ? '▼' : '▶'} Key facts ({summary.key_facts.length})
+                </button>
+            )}
+            {factsOpen && hasFacts && (
+                <ul className="summary-facts">
+                    {summary.key_facts.map((f, i) => <li key={i}>{f}</li>)}
+                </ul>
+            )}
 
             {matched.length > 0 ? (
                 <ul className={`summary-exp-bullets ${needsScroll ? 'summary-exp-bullets--scroll' : ''}`}>
