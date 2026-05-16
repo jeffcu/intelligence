@@ -17,6 +17,10 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 SUMMARIZER = Path(__file__).parent / "summarizer.py"
+INGESTOR   = Path(__file__).parent / "ingestor.py"
+
+# Guards against concurrent ingest+summarize runs.
+_ingest_running = False
 
 
 DB_PATH = Path(os.getenv("DB_PATH", str(Path(__file__).parent / "intelligence.db")))
@@ -574,6 +578,36 @@ def trigger_generate_summaries():
     return {"status": "started", "message": "Briefing generation running in the background."}
 
 
+@app.post("/api/ingest/trigger")
+def trigger_full_ingest():
+    """
+    Run ingestor.py then summarizer.py in a background thread.
+    Returns immediately. Skips if a run is already in progress.
+    """
+    global _ingest_running
+    if _ingest_running:
+        return {"status": "skipped", "message": "Ingest already in progress."}
+    if not INGESTOR.exists():
+        raise HTTPException(status_code=503, detail="ingestor.py not found.")
+    if not SUMMARIZER.exists():
+        raise HTTPException(status_code=503, detail="summarizer.py not found.")
+
+    def _run():
+        global _ingest_running
+        _ingest_running = True
+        try:
+            subprocess.run([sys.executable, str(INGESTOR)],   cwd=str(INGESTOR.parent))
+            subprocess.run([sys.executable, str(SUMMARIZER)], cwd=str(SUMMARIZER.parent))
+        except Exception as exc:
+            import logging
+            logging.error(f"Background ingest failed: {exc}")
+        finally:
+            _ingest_running = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": "started", "message": "Full ingest + summarization running in the background."}
+
+
 # ---------------------------------------------------------------------------
 # Earnings Calendar
 # ---------------------------------------------------------------------------
@@ -760,7 +794,11 @@ def get_schedule_status():
             target += timedelta(days=1)
         candidates.append(target)
 
-    return {"last_ingest": last_ingest, "next_ingest": min(candidates).isoformat()}
+    return {
+        "last_ingest":  last_ingest,
+        "next_ingest":  min(candidates).isoformat(),
+        "is_running":   _ingest_running,
+    }
 
 
 # ---------------------------------------------------------------------------

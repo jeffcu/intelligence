@@ -1262,6 +1262,12 @@ const FrontPageView = ({ portfolioArticles, topicArticles, tickerSummaries, topi
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
+// If news is older than this, auto-trigger a full ingest on page load or tab wake.
+const NEWS_STALE_H = 8;
+// While an ingest is running, poll schedule status this often.
+const SCHED_FAST_POLL_MS = 5_000;
+const SCHED_SLOW_POLL_MS = 60_000;
+
 const DELETED_KEY = 'intel_deleted_targets';
 
 function loadDeleted() {
@@ -1284,7 +1290,9 @@ const NewsView = () => {
     const [targetsOpen,     setTargetsOpen]     = useState(false);
     const [viewMode,        setViewMode]        = useState('front-page');
     const [scheduleStatus,  setScheduleStatus]  = useState(null);
-    const [, schedTick] = useState(0);
+    const [ingestFired,     setIngestFired]     = useState(false);
+    const schedPollRef = useRef(null);
+    const schedHiddenRef = useRef(null);
 
     const [portSummariesOpen,  setPortSummariesOpen]  = useState(true);
     const [portArticlesOpen,   setPortArticlesOpen]   = useState(false);
@@ -1355,6 +1363,26 @@ const NewsView = () => {
         } catch { /* non-fatal */ }
     }, []);
 
+    const schedReschedule = useCallback((isRunning) => {
+        if (schedPollRef.current) clearInterval(schedPollRef.current);
+        schedPollRef.current = setInterval(
+            fetchScheduleStatus,
+            isRunning ? SCHED_FAST_POLL_MS : SCHED_SLOW_POLL_MS,
+        );
+    }, [fetchScheduleStatus]);
+
+    const maybeTriggerIngest = useCallback(async (lastIngest) => {
+        const ageH = lastIngest
+            ? (Date.now() - new Date(lastIngest.replace(' ', 'T')).getTime()) / 3_600_000
+            : Infinity;
+        if (ageH <= NEWS_STALE_H) return;
+        setIngestFired(true);
+        try {
+            await fetch(`${INTELLIGENCE_API}/api/ingest/trigger`, { method: 'POST' });
+            schedReschedule(true);
+        } catch { /* non-fatal */ }
+    }, [schedReschedule]);
+
     const handleTargetDeleted = useCallback((value) => {
         setManuallyDeleted(prev => {
             const next = new Set(prev);
@@ -1400,28 +1428,34 @@ const NewsView = () => {
     }, [fetchData, fetchAiStats, fetchScheduleStatus]);
 
     // Re-fetch immediately when the tab becomes visible again after being
-    // backgrounded — browsers throttle setInterval in hidden tabs so the
-    // 5-minute tick may be hours late by the time the user returns.
+    // backgrounded. Also re-evaluate staleness so an ingest fires if needed.
     useEffect(() => {
-        let hiddenAt = null;
         const onVisibility = () => {
             if (document.hidden) {
-                hiddenAt = Date.now();
-            } else if (hiddenAt !== null && Date.now() - hiddenAt > 60_000) {
+                schedHiddenRef.current = Date.now();
+            } else {
+                const hiddenMs = schedHiddenRef.current ? Date.now() - schedHiddenRef.current : 0;
+                schedHiddenRef.current = null;
+                if (hiddenMs < 5 * 60_000) return;
                 fetchData(true);
                 fetchAiStats();
                 fetchScheduleStatus();
-                hiddenAt = null;
+                setIngestFired(false); // allow re-evaluation on next status update
             }
         };
         document.addEventListener('visibilitychange', onVisibility);
         return () => document.removeEventListener('visibilitychange', onVisibility);
     }, [fetchData, fetchAiStats, fetchScheduleStatus]);
 
+    // Manage schedule polling speed and auto-trigger ingest when status updates.
     useEffect(() => {
-        const id = setInterval(() => schedTick(n => n + 1), 60_000);
-        return () => clearInterval(id);
-    }, []);
+        if (!scheduleStatus) return;
+        schedReschedule(scheduleStatus.is_running);
+        if (!ingestFired) {
+            maybeTriggerIngest(scheduleStatus.last_ingest);
+        }
+        return () => { if (schedPollRef.current) clearInterval(schedPollRef.current); };
+    }, [scheduleStatus, ingestFired, schedReschedule, maybeTriggerIngest]);
 
     const tickerSet = new Set(
         targets.filter(t => t.target_type === 'Ticker').map(t => t.target_value.toUpperCase())
@@ -1477,21 +1511,32 @@ const NewsView = () => {
                     </nav>
                 </div>
                 <div className="header-controls">
-                    {scheduleStatus && (
-                        <div className="sched-status">
-                            <span className="sched-chunk">
-                                <span className="sched-label">Last</span>
-                                <span className="sched-wall">{fmtWallLocal(scheduleStatus.last_ingest)}</span>
-                                <span className="sched-rel">{fmtAgo(scheduleStatus.last_ingest)}</span>
-                            </span>
-                            <span className="sched-sep">·</span>
-                            <span className="sched-chunk">
-                                <span className="sched-label">Next</span>
-                                <span className="sched-wall">{fmtWallLocal(scheduleStatus.next_ingest)}</span>
-                                <span className="sched-day">{fmtDayLocal(scheduleStatus.next_ingest)}</span>
-                            </span>
-                        </div>
-                    )}
+                    {scheduleStatus && (() => {
+                        const ageH = scheduleStatus.last_ingest
+                            ? (Date.now() - new Date(scheduleStatus.last_ingest.replace(' ', 'T')).getTime()) / 3_600_000
+                            : Infinity;
+                        const tier = ageH < 4 ? 'current' : ageH < NEWS_STALE_H ? 'prior' : 'stale';
+                        const isRunning = scheduleStatus.is_running || ingestFired;
+                        return (
+                            <div className="sched-status">
+                                <span className={`sched-dot sched-dot--${tier}${isRunning ? ' sched-dot--pulse' : ''}`} />
+                                {isRunning ? (
+                                    <span className="sched-refreshing">Refreshing…</span>
+                                ) : (
+                                    <>
+                                        <span className={`sched-age sched-age--${tier}`}>{fmtAgo(scheduleStatus.last_ingest)}</span>
+                                        {scheduleStatus.next_ingest && (
+                                            <>
+                                                <span className="sched-sep">·</span>
+                                                <span className="sched-label">Next</span>
+                                                <span className="sched-countdown">{fmtCountdown(scheduleStatus.next_ingest)}</span>
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        );
+                    })()}
                 </div>
             </div>
 
