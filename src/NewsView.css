@@ -575,6 +575,11 @@
     margin-left: auto;
 }
 
+.summary-meta-stale {
+    color: #444;
+    font-style: italic;
+}
+
 .summary-paragraph {
     margin: 0.55rem 0 0;
     font-size: 0.88em;

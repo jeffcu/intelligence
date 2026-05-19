@@ -79,15 +79,17 @@ function fmtDayLocal(iso) {
     return d.toLocaleDateString('en-US', { weekday: 'long' });
 }
 
+// Time-decayed signal score. 48-hour half-life: a 2-day-old article
+// at impact 80 scores the same as a fresh article at impact 40.
+function articleScore(b) {
+    const signal = (b.impact_score || 0) - (b.hype_score || 0);
+    const ageH   = (Date.now() - new Date(b.published_at).getTime()) / 3_600_000;
+    const decay  = Math.pow(0.5, ageH / 48);
+    return signal * decay;
+}
+
 function sortArticles(articles) {
-    return [...articles].sort((a, b) => {
-        const aOld = isOld(a.published_at);
-        const bOld = isOld(b.published_at);
-        if (aOld !== bOld) return aOld ? 1 : -1;
-        const sigA = (a.impact_score || 0) - (a.hype_score || 0);
-        const sigB = (b.impact_score || 0) - (b.hype_score || 0);
-        return sigB - sigA;
-    });
+    return [...articles].sort((a, b) => articleScore(b) - articleScore(a));
 }
 
 function truncate(text, maxLen = 160) {
@@ -279,6 +281,8 @@ const SummaryCard = ({ summary }) => {
 
 const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
 const EXP_VISIBLE_LIMIT = 6;
+// AI summary paragraph is hidden after this many hours — it reflects old news.
+const SUMMARY_STALE_H = 48;
 
 const SummaryCardExp = ({ summary, articles }) => {
     const [factsOpen, setFactsOpen] = useState(false);
@@ -286,11 +290,17 @@ const SummaryCardExp = ({ summary, articles }) => {
     const isTicker  = !summary.target_type || summary.target_type === 'Ticker';
     const hasFacts  = summary.key_facts && summary.key_facts.length > 0;
 
+    const summaryAgeH = summary.generated_at
+        ? (Date.now() - new Date(summary.generated_at).getTime()) / 3_600_000
+        : Infinity;
+    const paragraphFresh = summaryAgeH < SUMMARY_STALE_H;
+
+    // Sort by decayed score: recent + important float up, old stays down.
     const matched = articles
         .filter(a => (a.matched_targets || []).some(
             t => t.toLowerCase() === summary.target_value.toLowerCase()
         ))
-        .sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+        .sort((a, b) => articleScore(b) - articleScore(a));
 
     const isFresh = (iso) => Date.now() - new Date(iso).getTime() < THREE_HOURS_MS;
     const needsScroll = matched.length > EXP_VISIBLE_LIMIT;
@@ -310,19 +320,20 @@ const SummaryCardExp = ({ summary, articles }) => {
                 <span className="summary-meta">
                     {summary.article_count} article{summary.article_count !== 1 ? 's' : ''}
                     &nbsp;·&nbsp;{relativeTime(summary.generated_at)}
+                    {!paragraphFresh && <span className="summary-meta-stale"> · analysis outdated</span>}
                 </span>
             </div>
 
-            {summary.paragraph && (
+            {paragraphFresh && summary.paragraph && (
                 <p className="summary-paragraph">{renderHighlighted(summary.paragraph)}</p>
             )}
 
-            {hasFacts && (
+            {paragraphFresh && hasFacts && (
                 <button className="summary-facts-toggle" onClick={() => setFactsOpen(o => !o)}>
                     {factsOpen ? '▼' : '▶'} Key facts ({summary.key_facts.length})
                 </button>
             )}
-            {factsOpen && hasFacts && (
+            {paragraphFresh && factsOpen && hasFacts && (
                 <ul className="summary-facts">
                     {summary.key_facts.map((f, i) => <li key={i}>{f}</li>)}
                 </ul>
